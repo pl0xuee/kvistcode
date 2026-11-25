@@ -25,6 +25,7 @@ import { ConversationSearch } from "@/components/ConversationSearch";
 import { InstallTip, installTipApplies } from "@/components/InstallTip";
 import { ResponseStyleRow } from "@/components/ResponseStyleRow";
 import { EmptyState, ErrorState } from "./States";
+import { hw } from "@/lib/host";
 
 /** Fleet scroll position, restored when coming back from an agent. */
 let savedScroll = 0;
@@ -105,7 +106,7 @@ export function Fleet() {
         icon="sparkle"
         tone="accent"
         title="No agents yet"
-        body="Start one from here with New agent, or in Kvistcode on your computer."
+        body={hw("Start one from here with New agent, or in Kvistcode on your computer.")}
       />
     );
   } else {
@@ -222,7 +223,7 @@ export function Fleet() {
       />
       <main className="mx-auto w-full max-w-[860px] flex-1 px-safe pt-4 pb-[calc(96px+var(--safe-bottom))]">{body}</main>
       {owner && stateStatus === "ready" && (
-        <div className="pointer-events-none fixed right-[max(16px,var(--safe-right))] bottom-[max(18px,calc(var(--safe-bottom)+10px))] z-30 flex flex-col items-end gap-2">
+        <div className="pointer-events-none fixed right-[max(16px,var(--safe-right),calc((100vw_-_860px)/2_+_16px))] bottom-[max(18px,calc(var(--safe-bottom)+10px))] z-30 flex flex-col items-end gap-2">
           {offline && (
             <p role="status" className="animate-fade rounded-full border border-line-strong bg-card px-3 py-1 text-[12.5px] text-muted edge">
               Offline. Reconnect to start an agent.
@@ -543,8 +544,7 @@ function SettingsSheet({ open, onClose }: { open: boolean; onClose: () => void }
       )}
       {session?.scope === "owner" && <StopAll onDone={onClose} />}
       <p className="mt-4 text-[13px] leading-relaxed text-muted">
-        Anyone with this device can approve requests and send prompts. You can revoke access from Settings → Phone & remote on your
-        computer.
+        {hw("Anyone with this device can approve requests and send prompts. You can revoke access from Settings → Phone & remote on your computer.")}
       </p>
       {confirm ? (
         <div className="mt-4 rounded-2xl border border-err/30 bg-err/[0.06] p-3">

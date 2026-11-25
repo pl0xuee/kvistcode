@@ -24,8 +24,16 @@
 //! - Traffic is plain HTTP; the UI explains that it is not encrypted on the local
 //!   network and recommends a VPN such as Tailscale away from home.
 
+pub mod coalesce;
+pub mod gh_errors;
+pub mod git_review;
+pub mod github;
+pub mod log_writer;
+pub mod ops;
 mod phone;
+pub mod pr_status;
 mod tailscale;
+pub mod triggers;
 mod view;
 
 pub use tailscale::{TailscaleState, TailscaleStatus};
@@ -57,9 +65,9 @@ use tokio::sync::{broadcast, oneshot, watch};
 use tracing::{info, warn};
 
 static REMOTE_HTML: &str = include_str!(concat!(env!("OUT_DIR"), "/remote.html"));
-static ICON_PNG: &[u8] = include_bytes!("../icons/128x128@2x.png");
-static ICON_192: &[u8] = include_bytes!("../icons/pwa-192.png");
-static ICON_512: &[u8] = include_bytes!("../icons/icon.png");
+static ICON_PNG: &[u8] = include_bytes!("../../../apps/desktop/src-tauri/icons/128x128@2x.png");
+static ICON_192: &[u8] = include_bytes!("../../../apps/desktop/src-tauri/icons/pwa-192.png");
+static ICON_512: &[u8] = include_bytes!("../../../apps/desktop/src-tauri/icons/icon.png");
 
 const MAX_FAILURES: u32 = 10;
 /// Open connections at once (each SSE stream holds one).
@@ -431,7 +439,7 @@ struct Running {
     epoch: u64,
     settings: RemoteSettings,
     shutdown: Option<oneshot::Sender<()>>,
-    task: Option<tauri::async_runtime::JoinHandle<()>>,
+    task: Option<tokio::task::JoinHandle<()>>,
 }
 
 #[derive(Serialize, Clone)]
@@ -484,6 +492,9 @@ pub struct RemoteStatus {
 
 pub struct Remote {
     core: Core,
+    /// Runtime the server and its background work run on (the host may call in from threads
+    /// that have none).
+    handle: tokio::runtime::Handle,
     version: String,
     path: PathBuf,
     events: broadcast::Sender<Arc<Published>>,
@@ -498,6 +509,8 @@ pub struct Remote {
     epoch: Mutex<u64>,
     /// Serializes start/stop so concurrent settings saves can't race.
     apply_lock: tokio::sync::Mutex<()>,
+    /// Running without a desktop app (the headless server): the phone app words itself for that.
+    headless: std::sync::atomic::AtomicBool,
     /// Set at app exit: later `apply` calls (e.g. the startup one) do nothing.
     shutting_down: std::sync::atomic::AtomicBool,
     error: Mutex<Option<String>>,
@@ -835,13 +848,19 @@ fn clean_device_name(raw: &str) -> String {
 }
 
 impl Remote {
-    pub fn new(core: Core, version: String, data_dir: PathBuf) -> Arc<Remote> {
+    pub fn new(
+        core: Core,
+        version: String,
+        data_dir: PathBuf,
+        handle: tokio::runtime::Handle,
+    ) -> Arc<Remote> {
         let path = data_dir.join("remote.json");
         let loaded = load_tokens(&path);
         let (events, _) = broadcast::channel(1024);
         let (generation, _) = watch::channel(0);
         let remote = Arc::new(Remote {
             core,
+            handle,
             version,
             path,
             events,
@@ -851,6 +870,7 @@ impl Remote {
             generation,
             epoch: Mutex::new(0),
             apply_lock: tokio::sync::Mutex::new(()),
+            headless: std::sync::atomic::AtomicBool::new(false),
             shutting_down: std::sync::atomic::AtomicBool::new(false),
             error: Mutex::new(None),
             tokens_problem: Mutex::new(loaded.problem),
@@ -1159,6 +1179,37 @@ impl Remote {
         let ts = self.tailscale.lock();
         let status = ts.status.as_ref()?;
         (status.state == TailscaleState::On).then(|| status.url.clone())?
+    }
+
+    /// Marks this server as the headless one (no desktop app behind it); `/api/session`
+    /// reports it so the web app doesn't talk about "the desktop app".
+    pub fn set_headless(&self, headless: bool) {
+        self.headless
+            .store(headless, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// The address clients use, once the server runs (the Tailscale URL when that is on).
+    pub fn url(&self) -> Option<String> {
+        self.base_url()
+    }
+
+    /// A pairing link that works now (see `pairing_for`): its URL and when it expires (unix
+    /// ms). `None` while the server isn't running, or Tailscale isn't ready yet.
+    pub fn pairing_link(&self) -> Option<(String, i64)> {
+        if !self.persist.load(std::sync::atomic::Ordering::SeqCst) {
+            return None;
+        }
+        let wants_tailscale = self
+            .core()
+            .settings()
+            .map(|s| s.remote.tailscale)
+            .unwrap_or(false);
+        if wants_tailscale && self.tailscale_url().is_none() {
+            return None;
+        }
+        let base = self.base_url()?;
+        let (url, _, expires_at) = self.pairing_for(&base);
+        Some((url, expires_at))
     }
 
     pub fn status(&self) -> RemoteStatus {
@@ -1516,7 +1567,9 @@ impl Remote {
         };
         let (tx, rx) = oneshot::channel::<()>();
         let router = self.router(epoch);
-        let task = tauri::async_runtime::spawn(serve(listener, router, rx, self.limiter.clone()));
+        let task = self
+            .handle
+            .spawn(serve(listener, router, rx, self.limiter.clone()));
         *self.running.lock() = Some(Running {
             addr,
             epoch,
@@ -1529,7 +1582,7 @@ impl Remote {
     }
 
     /// Signals the server to stop and ends its live event streams.
-    pub fn stop(&self) -> Option<tauri::async_runtime::JoinHandle<()>> {
+    pub fn stop(&self) -> Option<tokio::task::JoinHandle<()>> {
         let mut running = self.running.lock().take()?;
         *self.pairing.lock() = None;
         if let Some(tx) = running.shutdown.take() {
@@ -2298,6 +2351,7 @@ async fn session(
         "scope": name,
         "agentId": agent_id,
         "version": c.remote.version,
+        "headless": c.remote.headless.load(std::sync::atomic::Ordering::SeqCst),
     })))
 }
 
@@ -2515,7 +2569,7 @@ where
     // Its own task: a phone that gives up and disconnects mustn't cancel the work
     // halfway or leave the key "in flight" for the TTL; its retry gets this result.
     let remote = remote.clone();
-    let task = tauri::async_runtime::spawn(async move {
+    let task = remote.handle.clone().spawn(async move {
         let result = work.await;
         remote.idem_finish(&key, result.as_ref().ok().cloned());
         result
@@ -2628,7 +2682,7 @@ async fn create_agent(
                 config_choices: body.config_choices,
             })
             .await?;
-        if let Err(e) = crate::commands::remember_project(&core, &project) {
+        if let Err(e) = crate::ops::remember_project(&core, &project) {
             warn!("could not update recent projects: {e:#}");
         }
         let json = serde_json::to_string(&agent)
@@ -2765,7 +2819,7 @@ async fn resume(
     let interrupted = core.agent(&id)?.status == kvistcode_core::AgentStatus::Interrupted;
     // Starting an agent can take a while; answer now; progress and failures reach the
     // phone as agent updates and notices.
-    tauri::async_runtime::spawn(async move {
+    c.remote.handle.spawn(async move {
         if let Err(e) = core.resume_agent(&id, interrupted).await {
             warn!(agent = %id, "remote resume failed: {e:#}");
         }
@@ -2918,7 +2972,7 @@ async fn guard_secret_files(
     if body.allow_secrets {
         return Ok(());
     }
-    let secrets = crate::commands::secret_files_impl(core, agent_id).await?;
+    let secrets = crate::ops::secret_files_impl(core, agent_id).await?;
     match secret_refusal(&secrets, &body.exclude) {
         Some(message) => Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY, message)),
         None => Ok(()),
@@ -2957,7 +3011,7 @@ async fn secret_files(
 ) -> Result<Json<Vec<String>>, ApiError> {
     owner(&c.auth(&peer, &headers)?)?;
     Ok(Json(
-        crate::commands::secret_files_impl(&c.remote.core(), &id).await?,
+        crate::ops::secret_files_impl(&c.remote.core(), &id).await?,
     ))
 }
 
@@ -2972,7 +3026,7 @@ async fn commit(
     let core = c.remote.core();
     guard_secret_files(&core, &id, &body).await?;
     let result =
-        crate::commands::commit_excluding_impl(&core, &id, &body.message, &body.exclude).await?;
+        crate::ops::commit_excluding_impl(&core, &id, &body.message, &body.exclude).await?;
     Ok(Json(json!({ "result": result })))
 }
 
@@ -2987,8 +3041,7 @@ async fn ship(
     owner(&c.auth(&peer, &headers)?)?;
     let core = c.remote.core();
     guard_secret_files(&core, &id, &body).await?;
-    let result =
-        crate::commands::ship_excluding_impl(&core, &id, &body.message, &body.exclude).await?;
+    let result = crate::ops::ship_excluding_impl(&core, &id, &body.message, &body.exclude).await?;
     Ok(Json(serde_json::to_value(result).unwrap_or_default()))
 }
 
@@ -3685,7 +3738,7 @@ mod tests {
     async fn remote_api_end_to_end() {
         let mock = concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../../crates/kvistcode-core/tests/mock_acp.py"
+            "/../kvistcode-core/tests/mock_acp.py"
         );
         std::env::set_var("KVISTCODE_GROK_COMMAND", format!("python3 {mock}"));
         let dir =
@@ -3696,7 +3749,12 @@ mod tests {
 
         let forward = Arc::new(Forward(Mutex::new(None)));
         let core = Core::open(dir.join("data"), forward.clone()).unwrap();
-        let remote = Remote::new(core.clone(), "9.9.9".into(), dir.join("data"));
+        let remote = Remote::new(
+            core.clone(),
+            "9.9.9".into(),
+            dir.join("data"),
+            tokio::runtime::Handle::current(),
+        );
         *forward.0.lock() = Some(remote.clone());
 
         // A free port can be taken by a parallel test between probing and binding; retry.
@@ -4535,7 +4593,12 @@ mod tests {
     fn test_remote(dir: &std::path::Path) -> (Arc<Remote>, Core) {
         let core = Core::open(dir.join("core"), Arc::new(NullSink)).unwrap();
         std::fs::create_dir_all(dir.join("data")).unwrap();
-        let remote = Remote::new(core.clone(), "0.0.0".into(), dir.join("data"));
+        let remote = Remote::new(
+            core.clone(),
+            "0.0.0".into(),
+            dir.join("data"),
+            tokio::runtime::Handle::current(),
+        );
         (remote, core)
     }
 
@@ -4699,7 +4762,12 @@ mod tests {
         assert!(!file.contains(&token));
         assert!(file.contains(&hash_token(&token)));
         // A restart (re-reading the file) keeps the device.
-        let again = Remote::new(core.clone(), "0.0.0".into(), dir.join("data"));
+        let again = Remote::new(
+            core.clone(),
+            "0.0.0".into(),
+            dir.join("data"),
+            tokio::runtime::Handle::current(),
+        );
         assert_eq!(again.token_scope(&token), Some(Scope::Owner));
         again.unpair_all();
         assert_eq!(again.token_scope(&token), None);

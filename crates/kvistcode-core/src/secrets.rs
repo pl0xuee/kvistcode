@@ -55,8 +55,27 @@ impl SecretStore for Keyring {
     }
 }
 
+/// Where a headless host keeps its secrets instead of the OS keychain (see
+/// [`use_file_secrets`]).
+static FILE_SECRETS: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+/// Set once a store was chosen: after that, [`use_file_secrets`] is too late.
+static STORE_PICKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Keeps secrets (account API keys, MCP values) in the file `path` instead of the OS keychain.
+/// For a headless server, which usually has no keychain. Call it once, before opening the
+/// core; the desktop app never does. `KVISTCODE_SECRETS=memory` still wins (tests).
+pub fn use_file_secrets(path: std::path::PathBuf) -> anyhow::Result<()> {
+    if STORE_PICKED.load(std::sync::atomic::Ordering::SeqCst) {
+        anyhow::bail!("the secret store was already chosen; call this before opening the core");
+    }
+    FILE_SECRETS
+        .set(path)
+        .map_err(|_| anyhow::anyhow!("the secret file was already set"))
+}
+
 /// The OS keychain, or memory under `cargo test`.
 fn pick_store() -> Box<dyn SecretStore> {
+    STORE_PICKED.store(true, std::sync::atomic::Ordering::SeqCst);
     #[cfg(test)]
     {
         Box::new(Memory::default())
@@ -70,6 +89,8 @@ fn pick_store() -> Box<dyn SecretStore> {
             || std::env::var_os("KVISTCODE_SECRETS").is_some_and(|v| v == "memory")
         {
             Box::new(Memory::default())
+        } else if let Some(path) = FILE_SECRETS.get() {
+            Box::new(FileStore::new(path.clone()))
         } else {
             Box::new(Keyring)
         }
@@ -153,6 +174,66 @@ impl SecretStore for Memory {
     }
     fn delete(&self, account: &str) {
         self.0.lock().remove(account);
+    }
+}
+
+/// Secrets in one JSON file (account to value), for hosts without an OS keychain. Created
+/// owner-only (`0600` on Unix) and replaced atomically; values are never logged. A file that
+/// can't be read or parsed is an error, and is never overwritten.
+pub struct FileStore {
+    path: std::path::PathBuf,
+    /// One read-modify-write at a time.
+    lock: Mutex<()>,
+}
+
+impl FileStore {
+    pub fn new(path: std::path::PathBuf) -> Self {
+        FileStore {
+            path,
+            lock: Mutex::new(()),
+        }
+    }
+
+    fn read(&self) -> anyhow::Result<BTreeMap<String, String>> {
+        match std::fs::read(&self.path) {
+            Ok(bytes) => serde_json::from_slice(&bytes).map_err(|_| {
+                anyhow::anyhow!("the secrets file {} isn't readable", self.path.display())
+            }),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(BTreeMap::new()),
+            Err(e) => Err(anyhow::anyhow!(
+                "reading the secrets file {}: {e}",
+                self.path.display()
+            )),
+        }
+    }
+
+    fn write(&self, map: &BTreeMap<String, String>) -> anyhow::Result<()> {
+        use anyhow::Context;
+        crate::local_mcp::write_private_atomic(&self.path, &serde_json::to_vec_pretty(map)?)
+            .with_context(|| format!("saving the secrets file {}", self.path.display()))
+    }
+}
+
+impl SecretStore for FileStore {
+    fn set(&self, account: &str, value: &str) -> anyhow::Result<()> {
+        let _one = self.lock.lock();
+        let mut map = self.read()?;
+        map.insert(account.into(), value.into());
+        self.write(&map)
+    }
+    fn get(&self, account: &str) -> anyhow::Result<Option<String>> {
+        let _one = self.lock.lock();
+        Ok(self.read()?.get(account).cloned())
+    }
+    fn delete(&self, account: &str) {
+        let _one = self.lock.lock();
+        if let Ok(mut map) = self.read() {
+            if map.remove(account).is_some() {
+                if let Err(e) = self.write(&map) {
+                    tracing::warn!("{e:#}");
+                }
+            }
+        }
     }
 }
 
@@ -286,6 +367,50 @@ pub(crate) fn externalize(settings: &Settings, vault: &Vault) -> Settings {
 mod tests {
     use super::*;
     use crate::model::{KeyValue, McpServer};
+
+    #[test]
+    fn file_store_round_trips_privately() {
+        let dir = std::env::temp_dir().join(format!("kv-secrets-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("secrets.json");
+        let store = FileStore::new(path.clone());
+        assert_eq!(store.get("a").unwrap(), None);
+        store.set("a", "one").unwrap();
+        store.set("b", "two").unwrap();
+        store.set("a", "uno").unwrap();
+        // A second store on the same file (a restart) sees the values.
+        let again = FileStore::new(path.clone());
+        assert_eq!(again.get("a").unwrap().as_deref(), Some("uno"));
+        assert_eq!(again.get("b").unwrap().as_deref(), Some("two"));
+        again.delete("b");
+        assert_eq!(store.get("b").unwrap(), None);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
+        // No temp files left behind.
+        let names: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(names.len(), 1, "{names:?}");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn file_store_never_overwrites_an_unreadable_file() {
+        let dir = std::env::temp_dir().join(format!("kv-secrets-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("secrets.json");
+        std::fs::write(&path, "not json").unwrap();
+        let store = FileStore::new(path.clone());
+        assert!(store.get("a").is_err());
+        assert!(store.set("a", "x").is_err());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "not json");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     fn settings() -> Settings {
         let mut s = Settings::default();

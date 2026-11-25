@@ -3,6 +3,7 @@ import { agentIdentity } from "./meta";
 import { choicesFor, readWorkChoice, resolveWorkChoice } from "./modelGuide";
 import { storage } from "./storage";
 import type { Attachment, CreateAgentRequest, PermissionMode, Provider, RemoteAccount, RemoteCustomAgent } from "./types";
+import { hw } from "@/lib/host";
 
 export interface AgentChoice {
   /** "claude" | "codex" | "grok" | "gemini" | "custom:<id>" */
@@ -61,7 +62,7 @@ export interface NewAgentForm {
 /** Why an account probably can't start an agent right now (null = looks fine or unknown). */
 export function accountProblem(account: Pick<RemoteAccount, "loggedIn" | "error"> | undefined | null): string | null {
   if (!account) return null;
-  if (account.loggedIn === false) return "This account is signed out. Sign in on the computer first.";
+  if (account.loggedIn === false) return hw("This account is signed out. Sign in on the computer first.");
   if (account.error) return `This account has a problem: ${account.error}`;
   return null;
 }
@@ -81,7 +82,7 @@ export function validate(form: NewAgentForm, choices: AgentChoice[]): Validation
   if (!account) return { ok: false, error: "Choose an account.", field: "account" };
   const projectPath = form.projectPath.trim();
   if (!projectPath) return { ok: false, error: "Choose a folder for the agent to work in.", field: "folder" };
-  if (!looksLikePath(projectPath)) return { ok: false, error: "Enter the full path of a folder on your computer.", field: "folder" };
+  if (!looksLikePath(projectPath)) return { ok: false, error: hw("Enter the full path of a folder on your computer."), field: "folder" };
   const request: CreateAgentRequest = {
     provider: choice.provider,
     accountId: account.id,

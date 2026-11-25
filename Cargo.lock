@@ -2673,18 +2673,16 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
- "if-addrs",
  "kvistcode-core",
+ "kvistcode-remote",
  "libc",
  "notify-rust",
  "parking_lot",
  "png",
  "portable-pty",
- "qrcode",
  "rodio",
  "serde",
  "serde_json",
- "sha2 0.11.1",
  "tauri",
  "tauri-build",
  "tauri-plugin-autostart",
@@ -2696,7 +2694,6 @@ dependencies = [
  "tokio",
  "tokio-tungstenite",
  "tower",
- "tower-http",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
@@ -2705,6 +2702,53 @@ dependencies = [
  "which",
  "whisper-rs",
  "zbus 6.1.0",
+]
+
+[[package]]
+name = "kvistcode-remote"
+version = "0.8.1"
+dependencies = [
+ "anyhow",
+ "axum",
+ "base64 0.23.1",
+ "bytes",
+ "chrono",
+ "futures-util",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "if-addrs",
+ "kvistcode-core",
+ "libc",
+ "parking_lot",
+ "qrcode",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "tokio",
+ "tower",
+ "tower-http",
+ "tracing",
+ "ureq",
+ "uuid",
+ "which",
+]
+
+[[package]]
+name = "kvistcode-server"
+version = "0.8.1"
+dependencies = [
+ "anyhow",
+ "dirs 7.0.0",
+ "kvistcode-core",
+ "kvistcode-remote",
+ "qrcode",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
+ "ureq",
 ]
 
 [[package]]

@@ -98,18 +98,18 @@ impl std::error::Error for NothingToCommit {}
 
 /// Extra knobs for running a program.
 #[derive(Default)]
-pub(crate) struct Opts<'a> {
-    pub(crate) envs: Vec<(&'a str, &'a OsStr)>,
+pub struct Opts<'a> {
+    pub envs: Vec<(&'a str, &'a OsStr)>,
     /// Written to the program's stdin (otherwise stdin is closed).
-    pub(crate) stdin: Option<Vec<u8>>,
+    pub stdin: Option<Vec<u8>>,
     /// Kill the program if it hasn't finished by then (default [`GIT_TIMEOUT`]).
-    pub(crate) timeout: Option<Duration>,
+    pub timeout: Option<Duration>,
     /// Read at most this much of stdout, then kill the program (see [`Captured`]).
-    pub(crate) max_stdout: Option<usize>,
+    pub max_stdout: Option<usize>,
 }
 
-pub(crate) const PUSH_TIMEOUT: Duration = Duration::from_secs(180);
-pub(crate) const GH_TIMEOUT: Duration = Duration::from_secs(120);
+pub const PUSH_TIMEOUT: Duration = Duration::from_secs(180);
+pub const GH_TIMEOUT: Duration = Duration::from_secs(120);
 /// Read-only git (viewing a diff, reverting a hunk).
 const READ_TIMEOUT: Duration = Duration::from_secs(60);
 /// Everything else, notably commit and merge, whose hooks can hang.
@@ -152,7 +152,7 @@ async fn run(program: &str, cwd: &Path, args: &[&str]) -> anyhow::Result<String>
     run_opts(program, cwd, args, Opts::default()).await
 }
 
-pub(crate) async fn run_opts(
+pub async fn run_opts(
     program: &str,
     cwd: &Path,
     args: &[&str],
@@ -180,7 +180,7 @@ fn check(program: &str, args: &[&str], out: &std::process::Output) -> anyhow::Re
     bail!("{program} {} failed: {msg}", subcommand_of(args));
 }
 
-pub(crate) async fn output(
+pub async fn output(
     program: &str,
     cwd: &Path,
     args: &[&str],
@@ -346,7 +346,7 @@ async fn output_capped(
         .with_context(|| format!("running {program}"))
 }
 
-pub(crate) async fn git(cwd: &Path, args: &[&str]) -> anyhow::Result<String> {
+pub async fn git(cwd: &Path, args: &[&str]) -> anyhow::Result<String> {
     run("git", cwd, args).await
 }
 
@@ -405,7 +405,7 @@ fn nul_split(out: &str) -> impl Iterator<Item = &str> {
     out.split('\0').filter(|p| !p.is_empty())
 }
 
-pub(crate) fn agent_cwd(agent: &Agent) -> anyhow::Result<&Path> {
+pub fn agent_cwd(agent: &Agent) -> anyhow::Result<&Path> {
     let cwd = Path::new(&agent.cwd);
     if !cwd.is_dir() {
         bail!("The agent's folder no longer exists: {}", agent.cwd);
@@ -1661,7 +1661,7 @@ pub async fn pending_secret_files(
     Ok(found)
 }
 
-pub(crate) async fn commit_all(
+pub async fn commit_all(
     cwd: &Path,
     message: &str,
     exclude: &[String],
@@ -2552,7 +2552,7 @@ async fn resolve_base_ref(cwd: &Path, remote: &str, base: &str) -> anyhow::Resul
 }
 
 /// The last http(s) URL that ends a line of `out`.
-pub(crate) fn last_url(out: &str) -> Option<String> {
+pub fn last_url(out: &str) -> Option<String> {
     out.lines()
         .rev()
         .filter_map(|l| l.split_whitespace().last())
@@ -2561,7 +2561,7 @@ pub(crate) fn last_url(out: &str) -> Option<String> {
 }
 
 /// The remote `branch` tracks, else `origin`.
-pub(crate) async fn push_remote(cwd: &Path, branch: &str) -> anyhow::Result<String> {
+pub async fn push_remote(cwd: &Path, branch: &str) -> anyhow::Result<String> {
     let key = format!("branch.{branch}.remote");
     let configured = output("git", cwd, &["config", "--get", &key], Opts::default()).await?;
     let configured = String::from_utf8_lossy(&configured.stdout)

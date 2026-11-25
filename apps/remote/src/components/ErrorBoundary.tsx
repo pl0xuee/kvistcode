@@ -3,6 +3,7 @@ import { getRoute, navigate } from "@/lib/router";
 import { getState } from "@/lib/store";
 import { Icon } from "./Icon";
 import { Button } from "./ui";
+import { hw } from "@/lib/host";
 
 interface Props {
   children: ReactNode;
@@ -46,7 +47,7 @@ export class ErrorBoundary extends Component<Props, State> {
         </span>
         <h1 className="text-[18px] font-semibold text-fg">Something went wrong</h1>
         <p className="mt-1.5 max-w-[320px] text-[14px] leading-relaxed text-muted">
-          This screen hit an unexpected error. Your agents on your computer are not affected.
+          {hw("This screen hit an unexpected error. Your agents on your computer are not affected.")}
         </p>
         <p className="mt-3 max-w-[340px] truncate font-mono text-[12px] text-steel">{error.message}</p>
         <div className="mt-6 flex flex-wrap justify-center gap-2">

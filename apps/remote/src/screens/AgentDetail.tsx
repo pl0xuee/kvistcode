@@ -31,6 +31,7 @@ import { useStore, type PendingPrompt, type Timeline as TimelineState } from "@/
 import type { Agent, Attachment, TimelineItem } from "@/lib/types";
 import { AccountSheet, AgentActions, OptionSheet, SettingsChips, switchableAccounts } from "./AgentControls";
 import { EmptyState, ErrorState } from "./States";
+import { hw } from "@/lib/host";
 
 const NO_PENDING: PendingPrompt[] = [];
 
@@ -49,7 +50,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
           <EmptyState
             icon="archive"
             title="Agent not found"
-            body="It may have been deleted on your computer."
+            body={hw("It may have been deleted on your computer.")}
             action={readOnly ? undefined : { label: "Back to agents", onClick: () => navigate({ name: "fleet" }, { replace: true }) }}
           />
         </Screen>

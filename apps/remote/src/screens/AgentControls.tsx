@@ -17,6 +17,7 @@ import { choiceHint, optionNote, switchNeedsNote } from "@/lib/modelGuide";
 import { accountProblem } from "@/lib/newAgent";
 import { useStore } from "@/lib/store";
 import type { Agent, ConfigOption, RemoteAccount } from "@/lib/types";
+import { hw } from "@/lib/host";
 
 /** Same-provider accounts the agent could switch to. */
 export function switchableAccounts(agent: Agent, accounts: Record<string, RemoteAccount>): RemoteAccount[] {
@@ -174,7 +175,7 @@ export function AccountSheet({ agent, open, onClose }: { agent: Agent; open: boo
       description={agent.rateLimited ? "This account hit its rate limit. The session continues on the account you pick." : "The session continues on the account you pick."}
     >
       {list.length <= 1 ? (
-        <p className="py-2 text-[14px] text-muted">There's no other account for this provider. Add one in Kvistcode on your computer.</p>
+        <p className="py-2 text-[14px] text-muted">{hw("There's no other account for this provider. Add one in Kvistcode on your computer.")}</p>
       ) : (
         <div className="space-y-1.5" role="radiogroup" aria-label="Accounts">
           {list.map((a) => {

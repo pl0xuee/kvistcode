@@ -147,6 +147,8 @@ export interface Session {
   scope: Scope;
   agentId: string | null;
   version: string;
+  /** Talking to the windowless `kvistcode-server` rather than the desktop app (absent on older servers). */
+  headless?: boolean;
 }
 
 export interface StateSnapshot {

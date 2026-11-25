@@ -1,0 +1,43 @@
+[package]
+name = "kvistcode-remote"
+description = "Kvistcode's remote control server: the phone web app plus its JSON + SSE API (no UI toolkit)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+build = "build.rs"
+
+[dependencies]
+kvistcode-core.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+parking_lot.workspace = true
+which.workspace = true
+sha2 = "0.11"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+axum = "0.8"
+# The accept loop (connection cap, header-read timeout).
+hyper = { version = "1", features = ["server", "client", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+tower = { version = "0.5", features = ["util"] }
+# Gzip for the phone app (one inlined HTML file plus JSON); SSE is left alone by the default predicate.
+tower-http = { version = "0.6", default-features = false, features = ["compression-gzip"] }
+futures-util = "0.3"
+http-body-util = "0.1"
+bytes = "1"
+qrcode = "0.14"
+# The server picks the LAN address among the network interfaces (skipping VPNs).
+if-addrs = "0.15"
+base64 = "0.23"
+ureq = "3"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+# Tests link the core without `cfg(test)`: keep them off the real OS keychain.
+kvistcode-core = { workspace = true, features = ["memory-secrets"] }

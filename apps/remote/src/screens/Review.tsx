@@ -13,6 +13,7 @@ import { findFileIndex, takeReviewFocus } from "@/lib/reviewFocus";
 import { goBack } from "@/lib/router";
 import { useStore } from "@/lib/store";
 import { EmptyState, ErrorState } from "./States";
+import { hw } from "@/lib/host";
 
 const STATUS_BADGE: Record<string, { letter: string; color: string }> = {
   added: { letter: "A", color: "var(--ok)" },
@@ -156,7 +157,7 @@ export function Review({ agentId }: { agentId: string }) {
           {diff.truncated && (
             <p className="flex items-start gap-2 rounded-xl border border-line bg-panel px-3 py-2.5 text-[13px] text-muted">
               <Icon name="info" size={16} className="mt-px shrink-0" />
-              The patch is too large to show in full here. Review the rest in Kvistcode on your computer.
+              {hw("The patch is too large to show in full here. Review the rest in Kvistcode on your computer.")}
             </p>
           )}
         </section>

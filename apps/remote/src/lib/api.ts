@@ -12,6 +12,7 @@ import type {
   TimelineItem,
   UsageSnapshot,
 } from "./types";
+import { hw } from "@/lib/host";
 
 export type HttpMethod = "GET" | "POST" | "DELETE";
 
@@ -44,10 +45,10 @@ export function describeStatus(
   serverMessage: string | null,
 ): string {
   if (serverMessage && /shutting down/i.test(serverMessage))
-    return "Kvistcode is shutting down on your computer. Try again once it's running.";
+    return hw("Kvistcode is shutting down on your computer. Try again once it's running.");
   switch (status) {
     case 0:
-      return "Can't reach Kvistcode. Check that your computer is awake and reachable.";
+      return hw("Can't reach Kvistcode. Check that your computer is awake and reachable.");
     case 401:
       return "This device was unpaired.";
     case 403:

@@ -413,13 +413,10 @@ mod tests {
     use parking_lot::Mutex;
 
     #[cfg(unix)]
-    use crate::remote::Remote;
+    use crate::Remote;
 
     #[cfg(unix)]
-    const TESTS: &str = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../../crates/kvistcode-core/tests"
-    );
+    const TESTS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../kvistcode-core/tests");
     #[cfg(unix)]
     #[derive(Default)]
     struct Recorder(Mutex<Vec<KvistcodeEvent>>);
@@ -461,7 +458,12 @@ mod tests {
         settings.budget_action = BudgetAction::Pause;
         settings.agent_budget_usd = Some(0.4);
         core.save_settings(settings).unwrap();
-        let remote = Remote::new(core.clone(), "0.0.0".into(), dir.join("data"));
+        let remote = Remote::new(
+            core.clone(),
+            "0.0.0".into(),
+            dir.join("data"),
+            tokio::runtime::Handle::current(),
+        );
         let mut port = 0;
         for _ in 0..5 {
             port = std::net::TcpListener::bind("127.0.0.1:0")

@@ -71,6 +71,7 @@ pub async fn git_work_tree(path: &std::path::Path) -> bool {
 pub use local_mcp::LocalMcpSettings;
 pub use manager::Core;
 pub use model::*;
+pub use secrets::{use_file_secrets, FileStore};
 
 /// Receives every event the core produces. The Tauri shell forwards these to the
 /// window and drives sounds/notifications off `KvistcodeEvent::Attention`.

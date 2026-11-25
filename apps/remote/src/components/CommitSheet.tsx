@@ -10,6 +10,7 @@ import { CopyButton } from "./CopyButton";
 import { Icon } from "./Icon";
 import { Sheet } from "./Sheet";
 import { Button } from "./ui";
+import { hw } from "@/lib/host";
 
 /** Can the agent's work be committed now? (Not while it's working or waiting for approval.) */
 export function commitBlocked(agent: Agent): string | null {
@@ -210,7 +211,7 @@ function ResultBody({ agent, result, onClose }: { agent: Agent; result: GitResul
         {result.leftUncommitted > 0 && (
           <p className="px-1 text-[13px] leading-snug text-muted">
             The {plural(result.leftUncommitted, "other changed file")} stayed uncommitted: changes this agent didn't make, files you
-            left out, or files in a nested repository. Review {result.leftUncommitted === 1 ? "it" : "them"} in Kvistcode on your computer.
+            left out, or files in a nested repository. {hw(`Review ${result.leftUncommitted === 1 ? "it" : "them"} in Kvistcode on your computer.`)}
           </p>
         )}
         {result.skipped.length > 0 && (
@@ -239,7 +240,7 @@ function ResultBody({ agent, result, onClose }: { agent: Agent; result: GitResul
         <p className="px-1 text-[13.5px] text-muted">{line}</p>
         {status && (status.ahead > 0 || !status.upstream) && (
           <div className="rounded-xl border border-line bg-card px-3.5 py-2.5">
-            <p className="text-[12.5px] text-steel">To publish it, run this on your computer:</p>
+            <p className="text-[12.5px] text-steel">{hw("To publish it, run this on your computer:")}</p>
             <div className="mt-1 flex items-center gap-2">
               <code className="min-w-0 flex-1 truncate font-mono text-[13px] text-fg">{pushCommand(status)}</code>
               <CopyButton text={pushCommand(status)} label="Copy command" />

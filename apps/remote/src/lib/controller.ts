@@ -74,6 +74,7 @@ import type {
   StateSnapshot,
   TimelineItem,
 } from "./types";
+import { forgetHost, setHeadless } from "@/lib/host";
 
 let backend: Backend | null = null;
 /** The live connection, for actions kept in their own modules (`phoneActions`). */
@@ -290,6 +291,7 @@ async function connect(ref: TokenRef, quiet = false) {
   try {
     const session = await api.session(b);
     if (gen !== generation) return;
+    if (session) setHeadless(session.headless === true);
     if (!session || (session.scope !== "owner" && session.scope !== "viewer")) {
       throw new ApiError(
         502,
@@ -397,6 +399,7 @@ export function unpair() {
   if (current?.source === "shared") setShared(null);
   else {
     clearPairing();
+    forgetHost();
     purgeAllDrafts();
   }
   current = null;

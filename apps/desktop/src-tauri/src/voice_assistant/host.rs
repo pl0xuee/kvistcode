@@ -715,7 +715,7 @@ impl KvistcodeTools {
                             .lock()
                             .push((key, Instant::now(), agent.id.clone()));
                         if let Err(e) =
-                            crate::commands::remember_project(&host.core, &agent.project_path)
+                            kvistcode_remote::ops::remember_project(&host.core, &agent.project_path)
                         {
                             tracing::warn!("could not update recent projects: {e:#}");
                         }

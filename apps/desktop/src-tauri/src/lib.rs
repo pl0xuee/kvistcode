@@ -9,20 +9,15 @@ mod commands;
 mod diagnostics;
 mod dictation;
 mod events;
-mod gh_errors;
-mod git_review;
-mod github;
 mod github_work;
 mod hotkey;
 mod local;
 mod local_mcp_server;
-mod log_writer;
+use kvistcode_remote::log_writer;
 mod login_item;
 mod notify;
-mod pr_status;
 mod preview_proxy;
 mod project_settings;
-mod remote;
 mod sound;
 mod state;
 mod terminal;
@@ -46,6 +41,11 @@ use kvistcode_core::{Core, KvistcodeEvent};
 use tauri::{Manager, RunEvent};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt as _};
 use tracing::{error, info, warn};
+
+// The remote server and the git/GitHub helpers it needs live in their own crate (the headless
+// `kvistcode-server` uses them too); these keep the old `crate::remote::…` paths working.
+use kvistcode_remote as remote;
+use kvistcode_remote::{gh_errors, git_review, github, pr_status};
 
 use crate::attention::Attention;
 use crate::state::Shell;
@@ -359,6 +359,7 @@ fn manage_state(
         core.clone(),
         app.package_info().version.to_string(),
         data_dir.to_path_buf(),
+        tauri::async_runtime::handle().inner().clone(),
     );
     app.manage(remote.clone());
     let local_mcp = local_mcp_server::LocalMcpServer::new(core.clone(), data_dir.to_path_buf());
@@ -407,7 +408,7 @@ fn setup(app: &AppHandle, startup_data_dir: Option<&Path>) -> anyhow::Result<()>
     events::spawn_dispatcher(app.clone(), rx);
     spawn_signal_handler(app.clone());
     attention.spawn_escalation();
-    triggers::start(&core);
+    triggers::start(&core, tauri::async_runtime::handle().inner());
 
     // Settings-driven OS integration.
     let settings = core.settings().unwrap_or_else(|e| {

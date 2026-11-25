@@ -1,0 +1,28 @@
+[package]
+name = "kvistcode-server"
+description = "Kvistcode without a window: runs agents on a server and serves the phone web app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "kvistcode-server"
+path = "src/main.rs"
+
+[dependencies]
+kvistcode-core.workspace = true
+kvistcode-remote.workspace = true
+anyhow.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+dirs = "7"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-appender = "0.2"
+qrcode = "0.14"
+
+[dev-dependencies]
+# The integration tests run the built binary against a scratch folder and talk HTTP to it.
+ureq = "3"
+serde_json.workspace = true

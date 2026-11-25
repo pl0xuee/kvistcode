@@ -689,7 +689,7 @@ pub fn review_prompt(number: u64, feedback: &str) -> String {
 
 // ---------------------------------------------------------------- gh plumbing
 
-pub(crate) async fn gh(cwd: &Path, args: &[&str]) -> Result<String, String> {
+pub async fn gh(cwd: &Path, args: &[&str]) -> Result<String, String> {
     let exe =
         kvistcode_core::providers::resolve_program("gh").ok_or_else(|| "gh_missing".to_string())?;
     let mut cmd = tokio::process::Command::new(exe);

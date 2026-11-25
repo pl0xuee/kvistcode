@@ -194,7 +194,7 @@ pub fn rotate_token(data_dir: &Path) -> anyhow::Result<String> {
 }
 
 /// Writes `data` to `path` atomically, readable by the owner only (`0600` on Unix).
-fn write_private_atomic(path: &Path, data: &[u8]) -> std::io::Result<()> {
+pub(crate) fn write_private_atomic(path: &Path, data: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
     let name = path
         .file_name()

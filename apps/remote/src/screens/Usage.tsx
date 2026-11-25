@@ -26,6 +26,7 @@ import {
   type Meter,
   type Spend,
 } from "@/lib/usage";
+import { hw } from "@/lib/host";
 
 /** How often the open Usage screen reads again while the page is on screen. */
 const REFRESH_MS = 30_000;
@@ -68,9 +69,9 @@ export function Usage() {
 
   let body;
   if (unsupported) {
-    body = <Notice>Update Kvistcode on your computer to see usage here.</Notice>;
+    body = <Notice>{hw("Update Kvistcode on your computer to see usage here.")}</Notice>;
   } else if (!list.length) {
-    body = <Notice>No accounts yet. Add one in Kvistcode on your computer.</Notice>;
+    body = <Notice>{hw("No accounts yet. Add one in Kvistcode on your computer.")}</Notice>;
   } else {
     body = (
       <div className="space-y-6">
@@ -83,7 +84,7 @@ export function Usage() {
                   <BudgetLine key={r.key} row={r} />
                 ))}
               </ul>
-              {!hasDailyBudget(budget) && <p className="mt-3 text-[12.5px] leading-[18px] text-steel">No daily limit is set. Set one in Kvistcode on your computer.</p>}
+              {!hasDailyBudget(budget) && <p className="mt-3 text-[12.5px] leading-[18px] text-steel">{hw("No daily limit is set. Set one in Kvistcode on your computer.")}</p>}
             </div>
           </section>
         )}
@@ -223,7 +224,7 @@ function AccountCard({ account, spend, now }: { account: RemoteAccount; spend: S
       {state === "unmetered" && (
         <p className="mt-3 text-[13.5px] leading-[18px] text-muted">{billing === "api" ? "Billed per token: no usage limits." : "No usage limits."}</p>
       )}
-      {state === "signed_out" && <p className="mt-3 text-[13.5px] leading-[18px] text-muted">Sign in again in Kvistcode on your computer to use this account.</p>}
+      {state === "signed_out" && <p className="mt-3 text-[13.5px] leading-[18px] text-muted">{hw("Sign in again in Kvistcode on your computer to use this account.")}</p>}
 
       {spend && spend.agents > 0 && (
         <p className="mt-3 border-t border-line/70 pt-2.5 text-[13px] leading-[18px] text-muted tabular">

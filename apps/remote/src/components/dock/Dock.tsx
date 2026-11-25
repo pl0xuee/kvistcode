@@ -35,6 +35,7 @@ import { useInheritedConfig, useRunningSubagentList } from "@/lib/subagents";
 import { formatElapsed } from "@/lib/thinking";
 import type { Agent, PermissionItem, QuestionItem, TimelineItem } from "@/lib/types";
 import { switchableAccounts } from "@/screens/AgentControls";
+import { hw } from "@/lib/host";
 
 type Sheets = null | "options" | "reason" | "plan" | "question" | "chip-plan" | "chip-subagents";
 
@@ -299,7 +300,7 @@ function BlockedCard({ agent, block, onSwitchAccount }: { agent: Agent; block: D
       : kind === "error"
         ? notice || "Retry to carry on where it left off."
         : kind === "conflict"
-          ? "Resolve it in Kvistcode on your computer."
+          ? hw("Resolve it in Kvistcode on your computer.")
           : "Resume to continue the session.";
   return (
     <section

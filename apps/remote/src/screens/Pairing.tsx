@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AppMark, Icon, type IconName } from "@/components/Icon";
 import { Button } from "@/components/ui";
 import { parsePasted } from "@/lib/auth";
+import { hw } from "@/lib/host";
 import {
   pairWithCode,
   pairWithToken,
@@ -211,6 +212,10 @@ export function Pairing() {
         </Step>
       </ol>
 
+      <p className="mt-3 px-1 text-[12.5px] leading-snug text-steel">
+        Using a Kvistcode server with no window? Run <span className="font-mono">kvistcode-server --pair</span> on it and open the link it prints.
+      </p>
+
       {standalone && (
         <Callout tone="warn" icon="info" title="Pair this Home Screen app">
           {isIOS()
@@ -321,8 +326,7 @@ export function Pairing() {
           size={14}
           className="mr-1.5 inline-block align-[-2px]"
         />
-        Pairing links work once and expire after 5 minutes. Only pair with a
-        computer you own.
+        {hw("Pairing links work once and expire after 5 minutes. Only pair with a computer you own.")}
       </p>
     </Frame>
   );
@@ -393,7 +397,7 @@ export function Blocked() {
         {rate
           ? "Too many attempts"
           : offline
-            ? "Your phone is offline"
+            ? hw("Your phone is offline")
             : unreachable
             ? "Can't reach Kvistcode"
             : unavailable
@@ -406,20 +410,20 @@ export function Blocked() {
         {rate
           ? (message ?? "Try again in a few minutes.")
           : offline
-            ? "Connect to Wi-Fi or mobile data to reach Kvistcode on your computer."
+            ? hw("Connect to Wi-Fi or mobile data to reach Kvistcode on your computer.")
             : unreachable
-            ? "Your phone couldn't connect to Kvistcode on your computer."
+            ? hw("Your phone couldn't connect to Kvistcode on your computer.")
             : unavailable
-              ? `${message ?? "Kvistcode isn't accepting connections."} Turn it on in Settings → Phone & remote; this page reconnects by itself.`
+              ? hw(`${message ?? "Kvistcode isn't accepting connections."} Turn it on in Settings → Phone & remote; this page reconnects by itself.`)
               : message}
       </p>
 
       {unreachable && !offline && (
         <ul className="mt-7 space-y-3 rounded-2xl border border-line bg-panel p-4 text-[14px] text-fg edge">
           {[
-            "Kvistcode is open and your computer is awake",
-            "Remote access is on in Settings → Phone & remote",
-            "Your phone is on the same Wi-Fi as your computer, or connected to Tailscale",
+            hw("Kvistcode is open and your computer is awake"),
+            hw("Remote access is on in Settings → Phone & remote"),
+            hw("Your phone is on the same Wi-Fi as your computer, or connected to Tailscale"),
           ].map((t) => (
             <li key={t} className="flex items-start gap-2.5">
               <Icon
@@ -432,8 +436,7 @@ export function Blocked() {
           ))}
           <li className="flex items-start gap-2.5 border-t border-line/70 pt-3 text-muted">
             <Icon name="qr" size={17} className="mt-0.5 shrink-0 text-steel" />
-            If your computer's network address changed (new Wi-Fi, router
-            restart), scan the QR code in Kvistcode again.
+            {hw("If your computer's network address changed (new Wi-Fi, router restart), scan the QR code in Kvistcode again.")}
           </li>
         </ul>
       )}
@@ -462,7 +465,7 @@ export function Blocked() {
           className="w-full"
           onClick={async () => {
             const ok = await confirmAction({
-              title: "Pair a different computer?",
+              title: hw("Pair a different computer?"),
               body: "This forgets the current pairing. You'll need to scan a QR code again.",
               confirmLabel: "Forget pairing",
               destructive: true,
@@ -470,7 +473,7 @@ export function Blocked() {
             if (ok) unpair();
           }}
         >
-          Pair a different computer
+          {hw("Pair a different computer")}
         </Button>
       </div>
       {copy.retryNote && (

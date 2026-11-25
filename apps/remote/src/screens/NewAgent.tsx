@@ -18,6 +18,7 @@ import { goBack, navigate } from "@/lib/router";
 import { useStore } from "@/lib/store";
 import type { Attachment } from "@/lib/types";
 import { EmptyState, ErrorState } from "./States";
+import { hw } from "@/lib/host";
 
 const NEW_DRAFT = draftKey("new-agent");
 
@@ -83,7 +84,7 @@ export function NewAgent() {
       <EmptyState
         icon="user"
         title="No accounts yet"
-        body="Add a Claude, Codex, Grok, Gemini or custom agent account in Kvistcode on your computer, then come back to start agents from here."
+        body={hw("Add a Claude, Codex, Grok, Gemini or custom agent account in Kvistcode on your computer, then come back to start agents from here.")}
         action={{ label: "Back to agents", onClick: () => navigate({ name: "fleet" }, { replace: true }) }}
       />
     );
@@ -488,7 +489,7 @@ function PathInput({ value, onChange, invalid, autoFocus }: { value: string; onC
   return (
     <div className="mt-2">
       <label htmlFor="new-agent-path" className="sr-only">
-        Folder path on your computer
+        {hw("Folder path on your computer")}
       </label>
       <input
         id="new-agent-path"
@@ -506,7 +507,7 @@ function PathInput({ value, onChange, invalid, autoFocus }: { value: string; onC
           invalid ? "border-err/60" : "border-line-strong",
         )}
       />
-      <p className="mt-1.5 px-1 text-[12.5px] text-steel">Full path of a folder on your computer.</p>
+      <p className="mt-1.5 px-1 text-[12.5px] text-steel">{hw("Full path of a folder on your computer.")}</p>
     </div>
   );
 }
