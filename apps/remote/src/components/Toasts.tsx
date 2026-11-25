@@ -82,7 +82,7 @@ export function Toasts() {
     // the header's back/inbox buttons. Each toast carries its own role (status
     // or alert), so there's no extra live region here (it would announce twice).
     <div
-      className="pointer-events-none fixed inset-x-0 z-[60] mx-auto flex w-full max-w-[560px] flex-col gap-2 px-3"
+      className="pointer-events-none fixed right-0 left-[var(--rail)] z-[60] mx-auto flex w-full max-w-[560px] flex-col gap-2 px-3"
       style={{ bottom: "calc(max(12px, var(--safe-bottom)) + var(--composer-h, 0px) + var(--kb, 0px) + 8px)" }}
     >
       {toasts.map((t) => (

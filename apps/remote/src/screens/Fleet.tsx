@@ -13,7 +13,7 @@ import { devParam } from "@/lib/dev";
 import { plainPreview, plural, relativeTime, relativeTimeLong } from "@/lib/format";
 import { useNow } from "@/lib/hooks";
 import { agentIdentity, safeColor } from "@/lib/meta";
-import { navigate } from "@/lib/router";
+import { navigate, useRoute } from "@/lib/router";
 import { accountOf, filterAgents, isUsageLimited, pendingKindOf, permissionIndex, USAGE_LIMIT_LABEL, useAgentPending, useBackground, useTriage } from "@/lib/selectors";
 import { resumesLabel } from "@/lib/resumes";
 import { storage } from "@/lib/storage";
@@ -32,7 +32,11 @@ let savedScroll = 0;
 /** What was typed in the search box, so Back from a result returns to the same list. */
 let savedQuery = "";
 
-export function Fleet() {
+/**
+ * The agent list. `rail`: the left column of the wide layout, which scrolls on its own (the page's
+ * scroll belongs to the screen on the right) and keeps New agent at its foot.
+ */
+export function Fleet({ rail = false }: { rail?: boolean }) {
   const agents = useStore((s) => s.agents);
   const stateStatus = useStore((s) => s.stateStatus);
   const stateError = useStore((s) => s.stateError);
@@ -86,11 +90,12 @@ export function Fleet() {
   );
 
   useLayoutEffect(() => {
+    if (rail) return;
     window.scrollTo({ top: savedScroll, behavior: "instant" });
     return () => {
       savedScroll = window.scrollY;
     };
-  }, []);
+  }, [rail]);
 
   let body;
   if (stateStatus !== "ready" && list.length === 0) {
@@ -196,7 +201,7 @@ export function Fleet() {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col">
+    <div className={rail ? "flex h-dvh flex-col" : "flex min-h-dvh flex-col"}>
       <TopBar
         left={
           <div className="flex min-w-0 items-center gap-2.5 pl-2.5">
@@ -221,8 +226,19 @@ export function Fleet() {
           </div>
         }
       />
-      <main className="mx-auto w-full max-w-[860px] flex-1 px-safe pt-4 pb-[calc(96px+var(--safe-bottom))]">{body}</main>
-      {owner && stateStatus === "ready" && (
+      {rail ? (
+        <main className="scroll-thin min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pt-3 pb-4">{body}</main>
+      ) : (
+        <main className="mx-auto w-full max-w-[860px] flex-1 px-safe pt-4 pb-[calc(96px+var(--safe-bottom))]">{body}</main>
+      )}
+      {rail && owner && stateStatus === "ready" && (
+        <div className="border-t border-line/70 p-3">
+          <Button variant="primary" icon="plus" className="w-full" disabled={offline} onClick={() => navigate({ name: "new" })}>
+            {offline ? "Offline. Reconnect to start an agent." : "New agent"}
+          </Button>
+        </div>
+      )}
+      {!rail && owner && stateStatus === "ready" && (
         <div className="pointer-events-none fixed right-[max(16px,var(--safe-right),calc((100vw_-_860px)/2_+_16px))] bottom-[max(18px,calc(var(--safe-bottom)+10px))] z-30 flex flex-col items-end gap-2">
           {offline && (
             <p role="status" className="animate-fade rounded-full border border-line-strong bg-card px-3 py-1 text-[12.5px] text-muted edge">
@@ -401,12 +417,16 @@ const AgentRow = memo(function AgentRow({ agent, now, reason }: { agent: Agent; 
   // One definition of "needs you" (lib/triage), the same as the badge and the queue.
   const needs = reason !== null && reason !== "done";
   const pendingIcon = pendingKind === "question" ? "sparkle" : "shield";
+  // Open on the right, in the wide layout.
+  const route = useRoute();
+  const selected = (route.name === "agent" || route.name === "review") && route.agentId === agent.id;
 
   return (
     <button
       type="button"
       onClick={() => navigate({ name: "agent", agentId: agent.id })}
-      className={cn("press-row relative flex w-full items-start gap-3 px-3.5 py-3 text-left", needs && "bg-warn/[0.035]")}
+      aria-current={selected ? "page" : undefined}
+      className={cn("press-row relative flex w-full items-start gap-3 px-3.5 py-3 text-left", selected ? "bg-accent/[0.09]" : needs && "bg-warn/[0.035]")}
     >
       {needs && <span className="absolute inset-y-3 left-0 w-[3px] rounded-r-full bg-warn" aria-hidden />}
       <ProviderBadge agent={agent} size={42} status={limited ? "needs_permission" : shown.status} className="mt-0.5" />

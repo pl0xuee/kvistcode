@@ -5,6 +5,8 @@ import { Toasts } from "./components/Toasts";
 import { ensureTimeline } from "./lib/controller";
 import { navigate, useRoute } from "./lib/router";
 import { useNeedsYouCount } from "./lib/selectors";
+import { useWide } from "./lib/wide";
+import { DesktopHome } from "./screens/DesktopHome";
 import { useStore } from "./lib/store";
 import { AgentDetail } from "./screens/AgentDetail";
 import { Fleet } from "./screens/Fleet";
@@ -59,13 +61,38 @@ function Paired() {
       return;
     }
     const raf = requestAnimationFrame(() => {
-      const h = document.querySelector<HTMLElement>("header h1");
+      // In the wide layout the list's header comes first; the new screen is the pane's.
+      const h = document.querySelector<HTMLElement>("[data-pane] header h1") ?? document.querySelector<HTMLElement>("header h1");
       if (!h) return;
       h.tabIndex = -1;
       h.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(raf);
   }, [route]);
+
+  const wide = useWide() && !viewerAgent;
+  // Fixed overlays (toasts) center on the pane, not the whole window.
+  useEffect(() => {
+    document.documentElement.classList.toggle("has-rail", wide);
+    return () => document.documentElement.classList.remove("has-rail");
+  }, [wide]);
+
+  if (wide) {
+    return (
+      <>
+        <aside aria-label="Agents" className="fixed inset-y-0 left-0 z-40 w-[var(--rail)] border-r border-line/70 bg-base">
+          <ErrorBoundary>
+            <Fleet rail />
+          </ErrorBoundary>
+        </aside>
+        <div data-pane className="pl-[var(--rail)]">
+          <ErrorBoundary resetKey={routeKey(route)}>
+            {route.name === "fleet" ? <DesktopHome /> : <Screen route={route} viewerAgent={null} />}
+          </ErrorBoundary>
+        </div>
+      </>
+    );
+  }
 
   return (
     <ErrorBoundary resetKey={viewerAgent ?? routeKey(route)}>

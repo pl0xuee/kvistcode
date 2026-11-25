@@ -41,6 +41,8 @@
 
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  /* Width of the agent list in the wide layout (0 when there is none). */
+  --rail: 0px;
   /* The home-indicator inset, except while the keyboard is up (it covers that area;
      viewport.ts sets 0px then). */
   --safe-bottom-kb: var(--safe-bottom);
@@ -687,4 +689,22 @@
   .animate-spin-smooth {
     animation: breathe 1.4s ease-in-out infinite !important;
   }
+}
+
+/* Wide layout: the agent list stays on the left (App.tsx). */
+.has-rail {
+  --rail: 384px;
+}
+@media (min-width: 1440px) {
+  .has-rail {
+    --rail: 420px;
+  }
+}
+/* The list is always there, so "Back to agents" has nowhere to go. */
+[data-pane] header button[aria-label="Back to agents"] {
+  display: none;
+}
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--steel) 45%, transparent) transparent;
 }
