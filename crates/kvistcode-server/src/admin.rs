@@ -3,8 +3,10 @@
 //! The running process owns the pairing codes (they live in its memory), so the command
 //! has to ask it. The simplest safe channel is a Unix socket in the data folder: no network
 //! port, nothing for a browser or another machine to reach, and only the folder's owner can
-//! open it (the folder is `0700`, the socket `0600`). One request type: connect, read one
-//! JSON line `{"url": ..., "expiresAt": ...}` or `{"error": ...}`, done.
+//! open it (the folder is `0700`, the socket `0600`). Connect, write one command line
+//! (`pair` or `unpair-all`), read one JSON line back, done. `pair` answers
+//! `{"url": ..., "expiresAt": ...}`, `unpair-all` answers `{"ok": true}`, and either can
+//! answer `{"error": ...}`.
 
 use std::path::Path;
 #[cfg(unix)]
@@ -18,6 +20,26 @@ pub fn socket_path(data_dir: &Path) -> PathBuf {
     data_dir.join("admin.sock")
 }
 
+/// What `kvistcode-server` asks the running server for.
+#[cfg(unix)]
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Command {
+    /// A fresh pairing link.
+    Pair,
+    /// Sign out every paired browser and phone.
+    UnpairAll,
+}
+
+#[cfg(unix)]
+impl Command {
+    fn word(self) -> &'static str {
+        match self {
+            Command::Pair => "pair",
+            Command::UnpairAll => "unpair-all",
+        }
+    }
+}
+
 /// The reply of one admin request (only ever built on Unix, where the socket exists).
 #[cfg_attr(not(unix), allow(dead_code))]
 pub struct PairingLink {
@@ -28,7 +50,7 @@ pub struct PairingLink {
 #[cfg(unix)]
 pub fn serve(data_dir: &Path, remote: Arc<Remote>) -> anyhow::Result<tokio::task::JoinHandle<()>> {
     use std::os::unix::fs::PermissionsExt;
-    use tokio::io::AsyncWriteExt;
+    use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
     use tokio::net::UnixListener;
 
     let path = socket_path(data_dir);
@@ -39,18 +61,44 @@ pub fn serve(data_dir: &Path, remote: Arc<Remote>) -> anyhow::Result<tokio::task
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
     Ok(tokio::spawn(async move {
         loop {
-            let Ok((mut stream, _)) = listener.accept().await else {
+            let Ok((stream, _)) = listener.accept().await else {
                 break;
             };
-            let reply = match remote.pairing_link() {
-                Some((url, expires_at)) => {
-                    serde_json::json!({ "url": url, "expiresAt": expires_at })
+            let remote = remote.clone();
+            tokio::spawn(async move {
+                let (read, mut write) = stream.into_split();
+                let mut line = String::new();
+                let mut reader = BufReader::new(read.take(64));
+                let got = tokio::time::timeout(
+                    std::time::Duration::from_secs(5),
+                    reader.read_line(&mut line),
+                )
+                .await;
+                if !matches!(got, Ok(Ok(_))) {
+                    return;
                 }
-                None => serde_json::json!({
-                    "error": "The server isn't ready to pair yet (is Tailscale still starting?). Try again in a moment."
-                }),
-            };
-            let _ = stream.write_all(format!("{reply}\n").as_bytes()).await;
+                let reply = match line.trim() {
+                    "pair" => match remote.pairing_link() {
+                        Some((url, expires_at)) => {
+                            serde_json::json!({ "url": url, "expiresAt": expires_at })
+                        }
+                        None => serde_json::json!({
+                            "error": "The server isn't ready to pair yet (is Tailscale still starting?). Try again in a moment."
+                        }),
+                    },
+                    "unpair-all" => {
+                        // Read-only share links too: this is the "I lost a device" switch.
+                        for share in remote.status().shares {
+                            remote.revoke_share(&share.id);
+                        }
+                        remote.unpair_all();
+                        tracing::info!("every paired device was signed out (--unpair-all)");
+                        serde_json::json!({ "ok": true })
+                    }
+                    _ => serde_json::json!({ "error": "unknown request" }),
+                };
+                let _ = write.write_all(format!("{reply}\n").as_bytes()).await;
+            });
         }
     }))
 }
@@ -61,10 +109,10 @@ pub fn serve(_: &Path, _: Arc<Remote>) -> anyhow::Result<tokio::task::JoinHandle
     anyhow::bail!("`--pair` isn't supported on this system")
 }
 
-/// Asks the server running on `data_dir` for a pairing link.
+/// Sends `command` to the server running on `data_dir` and returns its JSON answer.
 #[cfg(unix)]
-pub fn request(data_dir: &Path) -> Result<PairingLink, String> {
-    use std::io::Read;
+fn ask(data_dir: &Path, command: Command) -> Result<serde_json::Value, String> {
+    use std::io::{Read, Write};
     use std::os::unix::net::UnixStream;
     use std::time::Duration;
 
@@ -76,6 +124,10 @@ pub fn request(data_dir: &Path) -> Result<PairingLink, String> {
         )
     })?;
     let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+    let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
+    stream
+        .write_all(format!("{}\n", command.word()).as_bytes())
+        .map_err(|e| format!("couldn't reach the server: {e}"))?;
     let mut line = String::new();
     stream
         .read_to_string(&mut line)
@@ -85,6 +137,13 @@ pub fn request(data_dir: &Path) -> Result<PairingLink, String> {
     if let Some(e) = v["error"].as_str() {
         return Err(e.to_string());
     }
+    Ok(v)
+}
+
+/// Asks the server running on `data_dir` for a pairing link.
+#[cfg(unix)]
+pub fn request(data_dir: &Path) -> Result<PairingLink, String> {
+    let v = ask(data_dir, Command::Pair)?;
     match (v["url"].as_str(), v["expiresAt"].as_i64()) {
         (Some(url), Some(expires_at)) => Ok(PairingLink {
             url: url.to_string(),
@@ -97,4 +156,15 @@ pub fn request(data_dir: &Path) -> Result<PairingLink, String> {
 #[cfg(not(unix))]
 pub fn request(_: &Path) -> Result<PairingLink, String> {
     Err("`--pair` isn't supported on this system. Restart the server to get a new link.".into())
+}
+
+/// Signs out every device paired with the server running on `data_dir`.
+#[cfg(unix)]
+pub fn unpair_all(data_dir: &Path) -> Result<(), String> {
+    ask(data_dir, Command::UnpairAll).map(|_| ())
+}
+
+#[cfg(not(unix))]
+pub fn unpair_all(_: &Path) -> Result<(), String> {
+    Err("`--unpair-all` isn't supported on this system. Stop the server and delete remote.json in its data folder.".into())
 }

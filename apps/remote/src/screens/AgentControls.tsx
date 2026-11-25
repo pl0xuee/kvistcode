@@ -66,7 +66,7 @@ export const SettingsChips = memo(function SettingsChips({ agent, onPick }: { ag
         edges.left && edges.right ? "fade-x" : edges.right ? "fade-x-end" : edges.left ? "fade-x-start" : "",
       )}
     >
-      <div className="mx-auto flex w-max min-w-full max-w-none items-center gap-1.5 px-safe py-1.5 md:w-full md:max-w-[860px]">
+      <div className="mx-auto flex w-max min-w-full max-w-none items-center gap-1.5 px-safe py-1.5 md:w-full md:min-w-0 md:max-w-[860px]">
         {options.map((o) => {
           const saving = !!busy[`config:${agent.id}:${o.id}`];
           const toggle = onOff(o);

@@ -15,7 +15,17 @@ function read(): boolean {
   }
 }
 
-let headless = read();
+/** The headless server marks its page (`<meta name="kvistcode-host" content="server">`), so even
+ * the pairing screen, before any session exists, knows. */
+function servedByServer(): boolean {
+  try {
+    return document.querySelector('meta[name="kvistcode-host"]')?.getAttribute("content") === "server";
+  } catch {
+    return false;
+  }
+}
+
+let headless = servedByServer() || read();
 
 export function isHeadless(): boolean {
   return headless;
@@ -34,7 +44,7 @@ export function setHeadless(value: boolean) {
 
 /** Unpairing: the next server may be a different kind. */
 export function forgetHost() {
-  headless = false;
+  headless = servedByServer();
   try {
     localStorage.removeItem(KEY);
   } catch {

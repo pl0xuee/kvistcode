@@ -64,9 +64,8 @@ export const projectLayoutAfter: ProjectLayout = {
 };
 
 /** Today against a $15 daily limit, from what the agents have used. */
-export function budgetStatus(agents: readonly Agent[]): BudgetStatus {
+export function budgetStatus(agents: readonly Agent[], cap: number | null = 15): BudgetStatus {
   const todayUsd = agents.reduce((n, a) => n + a.costUsd, 0);
-  const cap = 15;
   return {
     day: new Date().toISOString().slice(0, 10),
     todayUsd,
@@ -75,7 +74,7 @@ export function budgetStatus(agents: readonly Agent[]): BudgetStatus {
     dailyBudgetTokens: null,
     todayTurns: 27,
     dailyBudgetTurns: null,
-    level: todayUsd >= cap ? "hit" : todayUsd >= cap * 0.8 ? "warn" : "under",
+    level: cap === null ? "under" : todayUsd >= cap ? "hit" : todayUsd >= cap * 0.8 ? "warn" : "under",
   };
 }
 

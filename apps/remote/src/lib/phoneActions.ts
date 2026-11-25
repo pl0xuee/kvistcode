@@ -9,6 +9,7 @@ import { activeBackend, handleAuthError, toastError } from "./controller";
 import { getState, setState } from "./store";
 import type { Agent, RemoteAccount, ResponseStyle, SearchResults } from "./types";
 import { parseBudget, parseUsage } from "./usage";
+import { hw } from "./host";
 
 /** The agent as it should look once the server has taken `choice` (its own update follows and wins). */
 export function heldAfter(agent: Agent, choice: HoldChoice): Agent {
@@ -109,5 +110,34 @@ export async function setResponseStyle(style: ResponseStyle): Promise<void> {
   } catch (e) {
     setState({ responseStyle: before });
     if (!handleAuthError(e)) toastError("Couldn't save the setting", e);
+  }
+}
+
+/**
+ * Sets (or with `null`, removes) the daily spending limit, then reads usage again so the
+ * Today card shows it. Returns whether the server took it; a refusal shows as a toast.
+ */
+export async function setDailyBudget(usd: number | null): Promise<boolean> {
+  const b = activeBackend();
+  if (!b || getState().busy["daily-budget"]) return false;
+  setState((s) => ({ busy: { ...s.busy, "daily-budget": true } }));
+  try {
+    await api.setDailyBudget(b, usd);
+    // Shown at once; the usage read that follows brings the matching level.
+    setState((s) => (s.budget ? { budget: { ...s.budget, dailyBudgetUsd: usd } } : {}));
+    await loadUsage();
+    return true;
+  } catch (e) {
+    if (!handleAuthError(e)) {
+      const old = e instanceof ApiError && e.status === 404;
+      toastError("Couldn't save the limit", old ? new Error(hw("Update Kvistcode on your computer to set it from here.")) : e);
+    }
+    return false;
+  } finally {
+    setState((s) => {
+      const busy = { ...s.busy };
+      delete busy["daily-budget"];
+      return { busy };
+    });
   }
 }

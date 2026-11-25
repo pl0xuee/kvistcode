@@ -333,6 +333,9 @@ export const api = {
   /** Full-text search over every conversation, grouped by agent. */
   search: (b: Backend, query: string) =>
     b.request("GET", `/api/search?q=${encodeURIComponent(query)}`) as Promise<SearchResults>,
+  /** The daily spending limit in dollars; `null` removes it. Older servers: 404. */
+  setDailyBudget: (b: Backend, usd: number | null) =>
+    b.request("POST", "/api/daily-budget", { usd }) as Promise<void>,
   setResponseStyle: (b: Backend, style: ResponseStyle) =>
     b.request("POST", "/api/response-style", { style }) as Promise<void>,
   removeQueued: (b: Backend, agentId: string, qid: string) =>

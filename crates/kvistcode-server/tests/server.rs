@@ -270,3 +270,38 @@ fn a_second_server_on_the_same_data_folder_is_refused() {
     assert!(err.contains("already using"), "{err}");
     assert!(!err.contains("panicked"), "{err}");
 }
+
+#[test]
+fn unpair_all_signs_every_browser_out() {
+    let scratch = Scratch::new();
+    let server = Server::start(&scratch);
+    let base = server.base();
+    let (code, body) = pair(&base, &server.link);
+    assert_eq!(code, 200, "{body}");
+    let token = token_from(&body);
+    assert_eq!(get(&base, "/api/state", Some(&token)).0, 200);
+
+    let out = server_command(&scratch)
+        .arg("--unpair-all")
+        .output()
+        .expect("running --unpair-all");
+    assert!(out.status.success(), "{out:?}");
+    assert_eq!(get(&base, "/api/state", Some(&token)).0, 401);
+
+    // A new link still pairs afterwards.
+    let out = pair_command(&scratch);
+    assert!(out.status.success(), "{out:?}");
+    let text = String::from_utf8_lossy(&out.stdout);
+    let link = text.lines().find(|l| l.contains("#pair=")).unwrap().trim();
+    assert_eq!(pair(&base, link).0, 200);
+}
+
+#[test]
+fn an_open_data_folder_is_made_private() {
+    use std::os::unix::fs::PermissionsExt;
+    let scratch = Scratch::new();
+    std::fs::create_dir_all(scratch.data()).unwrap();
+    std::fs::set_permissions(scratch.data(), std::fs::Permissions::from_mode(0o755)).unwrap();
+    let _server = Server::start(&scratch);
+    assert_eq!(mode(&scratch.data()), 0o700);
+}

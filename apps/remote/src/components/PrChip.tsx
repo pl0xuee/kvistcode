@@ -56,7 +56,7 @@ export const PrChip = memo(function PrChip({ agent }: { agent: Agent }) {
   const cls = "inline-flex h-8 shrink-0 items-center gap-2 rounded-full border border-line-strong bg-card px-3 text-[12.5px] whitespace-nowrap";
   return (
     <div className="scroll-x border-t border-line/60 [@media(orientation:landscape)_and_(max-height:500px)]:hidden">
-      <div className="mx-auto flex w-max min-w-full items-center px-safe py-1.5 md:w-full md:max-w-[860px]">
+      <div className="mx-auto flex w-max min-w-full items-center px-safe py-1.5 md:w-full md:min-w-0 md:max-w-[860px]">
         {chip.url ? (
           <a href={chip.url} target="_blank" rel="noopener noreferrer" className={cn("press hit relative", cls)}>
             {body}

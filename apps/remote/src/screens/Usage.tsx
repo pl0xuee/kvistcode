@@ -1,13 +1,13 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AccountDot, ProviderBadge } from "@/components/Identity";
 import { Icon } from "@/components/Icon";
 import { ConnectionPill, TopBar } from "@/components/TopBar";
-import { IconButton } from "@/components/ui";
+import { Button, IconButton } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { formatCost, formatTokens, plural, relativeTimeLong } from "@/lib/format";
 import { useNow } from "@/lib/hooks";
 import { safeColor } from "@/lib/meta";
-import { loadUsage } from "@/lib/phoneActions";
+import { loadUsage, setDailyBudget } from "@/lib/phoneActions";
 import { goBack } from "@/lib/router";
 import { useStore } from "@/lib/store";
 import type { RemoteAccount } from "@/lib/types";
@@ -84,7 +84,7 @@ export function Usage() {
                   <BudgetLine key={r.key} row={r} />
                 ))}
               </ul>
-              {!hasDailyBudget(budget) && <p className="mt-3 text-[12.5px] leading-[18px] text-steel">{hw("No daily limit is set. Set one in Kvistcode on your computer.")}</p>}
+              <DailyLimit cap={budget?.dailyBudgetUsd ?? null} anyLimit={hasDailyBudget(budget)} />
             </div>
           </section>
         )}
@@ -117,6 +117,82 @@ export function Usage() {
       </TopBar>
       <main className="mx-auto w-full max-w-[860px] flex-1 px-safe pt-4 pb-[calc(24px+var(--safe-bottom))]">{body}</main>
     </div>
+  );
+}
+
+/** The daily spending limit, set or changed in place. */
+function DailyLimit({ cap, anyLimit }: { cap: number | null; anyLimit: boolean }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState("");
+  const busy = useStore((s) => !!s.busy["daily-budget"]);
+  const amount = Number(value.trim().replace(/^\$/, "").replace(",", "."));
+  const valid = value.trim() !== "" && Number.isFinite(amount) && amount > 0 && amount <= 1_000_000;
+  const save = async (usd: number | null) => {
+    if (await setDailyBudget(usd)) setEditing(false);
+  };
+
+  if (!editing) {
+    return (
+      <div className="mt-3 flex items-center justify-between gap-3 border-t border-line/60 pt-3">
+        <p className="min-w-0 text-[12.5px] leading-[18px] text-steel">
+          {cap !== null ? `Daily spending limit: ${formatCost(cap)}` : anyLimit ? "No daily spending limit." : "No daily limit is set."}
+        </p>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            setValue(cap !== null ? String(cap) : "");
+            setEditing(true);
+          }}
+        >
+          {cap !== null ? "Change" : "Set a limit"}
+        </Button>
+      </div>
+    );
+  }
+  return (
+    <form
+      className="mt-3 border-t border-line/60 pt-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (valid) void save(Math.round(amount * 100) / 100);
+      }}
+    >
+      <label htmlFor="daily-limit" className="block text-[12.5px] leading-[18px] text-steel">
+        Daily spending limit, in dollars
+      </label>
+      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[8rem] flex-1">
+          <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-[15px] text-steel">$</span>
+          <input
+            id="daily-limit"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setEditing(false);
+            }}
+            inputMode="decimal"
+            autoComplete="off"
+            autoFocus
+            placeholder="20"
+            aria-invalid={value.trim() !== "" && !valid}
+            className="block h-10 w-full rounded-[10px] border border-line-strong bg-card pr-3 pl-7 text-[16px] text-fg tabular outline-none placeholder:text-steel focus:border-accent/60"
+          />
+        </div>
+        <Button type="submit" size="sm" variant="primary" disabled={!valid} loading={busy}>
+          Save
+        </Button>
+        {cap !== null && (
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => void save(null)}>
+            Remove
+          </Button>
+        )}
+        <Button size="sm" variant="ghost" disabled={busy} onClick={() => setEditing(false)}>
+          Cancel
+        </Button>
+      </div>
+      {value.trim() !== "" && !valid && <p className="mt-1.5 text-[12.5px] text-err">Enter an amount above $0.</p>}
+    </form>
   );
 }
 

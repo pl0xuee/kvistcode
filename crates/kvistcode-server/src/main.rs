@@ -53,15 +53,18 @@ fn main() {
         }
         return;
     }
-
-    if let Err(e) = std::fs::create_dir_all(&data_dir) {
-        fail(&format!("couldn't create {}: {e}", data_dir.display()));
+    if args.unpair_all {
+        match admin::unpair_all(&data_dir) {
+            Ok(()) => println!(
+                "Every paired browser and phone is signed out. Run `kvistcode-server --pair` for a new link."
+            ),
+            Err(e) => fail(&e),
+        }
+        return;
     }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        // Holds the database, secrets, pairing tokens and the admin socket.
-        let _ = std::fs::set_permissions(&data_dir, std::fs::Permissions::from_mode(0o700));
+
+    if let Err(e) = private_dir(&data_dir) {
+        fail(&e);
     }
     let _lock = match lock::DataDirLock::take(&data_dir) {
         Ok(l) => l,
@@ -323,6 +326,48 @@ async fn wait_for_stop() {
     }
     #[cfg(not(unix))]
     let _ = tokio::signal::ctrl_c().await;
+}
+
+/// Creates `dir` (and its parents) and makes sure only this user can open it: it holds the
+/// database, secrets, pairing tokens and the admin socket. Refuses a folder someone else
+/// owns, or one whose permissions can't be tightened, rather than run with it open.
+fn private_dir(dir: &Path) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(dir)
+            .map_err(|e| format!("couldn't create {}: {e}", dir.display()))?;
+        let meta =
+            std::fs::metadata(dir).map_err(|e| format!("couldn't read {}: {e}", dir.display()))?;
+        let me = std::fs::metadata("/proc/self").map(|m| m.uid()).ok();
+        if me.is_some_and(|uid| uid != meta.uid()) {
+            return Err(format!(
+                "{} belongs to another user. Pick a data folder you own with --data-dir.",
+                dir.display()
+            ));
+        }
+        if meta.mode() & 0o077 != 0 {
+            eprintln!(
+                "kvistcode-server: making {} private (only you can open it now)",
+                dir.display()
+            );
+            std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
+                .map_err(|e| format!("couldn't make {} private: {e}", dir.display()))?;
+            let mode = std::fs::metadata(dir).map(|m| m.mode()).unwrap_or(0o777);
+            if mode & 0o077 != 0 {
+                return Err(format!(
+                    "{} can't be made private (other users could read it). Pick another data folder with --data-dir.",
+                    dir.display()
+                ));
+            }
+        }
+        Ok(())
+    }
+    #[cfg(not(unix))]
+    std::fs::create_dir_all(dir).map_err(|e| format!("couldn't create {}: {e}", dir.display()))
 }
 
 /// Logs to stderr and to a private, size-capped file in `<data>/logs`. Agent output stays out

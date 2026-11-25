@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AppMark, Icon, type IconName } from "@/components/Icon";
 import { Button } from "@/components/ui";
 import { parsePasted } from "@/lib/auth";
-import { hw } from "@/lib/host";
+import { hw, isHeadless } from "@/lib/host";
 import {
   pairWithCode,
   pairWithToken,
@@ -106,6 +106,8 @@ function Callout({
 
 export function Pairing() {
   const reason = useStore((s) => s.unpairedReason);
+  // The headless server: pairing links come from `kvistcode-server --pair`, not a QR in Settings.
+  const server = isHeadless();
   const standalone = isStandalone();
   const [pasteOpen, setPasteOpen] = useState(false);
   const [value, setValue] = useState("");
@@ -154,13 +156,16 @@ export function Pairing() {
         Pair with Kvistcode
       </h1>
       <p className="mx-auto mt-2 max-w-[330px] text-center text-[15px] leading-relaxed text-muted">
-        Watch your agents, approve requests and send prompts from your phone.
+        {server
+          ? "Watch your agents, approve requests and send prompts from this browser."
+          : "Watch your agents, approve requests and send prompts from your phone."}
       </p>
 
       {reason === "revoked" && (
         <Callout tone="warn" icon="unlink" title="This device was unpaired">
-          Its access was revoked or expired. Scan a new QR code from Kvistcode's
-          Settings to reconnect.
+          {server
+            ? "Its access was revoked or expired. Run kvistcode-server --pair on the server and open the new link to reconnect."
+            : "Its access was revoked or expired. Scan a new QR code from Kvistcode's Settings to reconnect."}
         </Callout>
       )}
       {reason === "share_expired" && (
@@ -178,43 +183,66 @@ export function Pairing() {
           icon="alertCircle"
           title="That pairing link didn't work"
         >
-          Pairing codes work once and expire after 5 minutes. Show a fresh QR
-          code in Kvistcode and scan it again.
+          {server
+            ? "Pairing links work once and expire after 5 minutes. Run kvistcode-server --pair on the server for a new one."
+            : "Pairing codes work once and expire after 5 minutes. Show a fresh QR code in Kvistcode and scan it again."}
         </Callout>
       )}
 
-      <ol
-        className="mt-7 divide-y divide-line/70 rounded-2xl border border-line bg-panel px-4 edge"
-        aria-label="How to pair"
-      >
-        <Step n={1} icon="laptop">
-          Open <span className="font-semibold">Kvistcode</span> on your computer
-        </Step>
-        <Step n={2} icon="cog">
-          Go to <span className="font-semibold">Settings</span>
-          <Icon
-            name="chevronRight"
-            size={14}
-            strokeWidth={2.4}
-            className="mx-0.5 inline-block align-[-2px] text-steel"
-          />
-          <span className="font-semibold">Phone &amp; remote</span>
-        </Step>
-        <Step n={3} icon="qr">
-          {scan ? (
-            <>
-              Tap <span className="font-semibold">Scan QR code</span> below and
-              point it at the code
-            </>
-          ) : (
-            "Scan the QR code with your phone's camera"
-          )}
-        </Step>
-      </ol>
+      {server ? (
+        <ol
+          className="mt-7 divide-y divide-line/70 rounded-2xl border border-line bg-panel px-4 edge"
+          aria-label="How to pair"
+        >
+          <Step n={1} icon="terminal">
+            On the server, run{" "}
+            <span className="font-mono font-semibold whitespace-nowrap">
+              kvistcode-server --pair
+            </span>
+          </Step>
+          <Step n={2} icon="link">
+            Open the link it prints in this browser, or paste it below
+          </Step>
+        </ol>
+      ) : (
+        <ol
+          className="mt-7 divide-y divide-line/70 rounded-2xl border border-line bg-panel px-4 edge"
+          aria-label="How to pair"
+        >
+          <Step n={1} icon="laptop">
+            Open <span className="font-semibold">Kvistcode</span> on your
+            computer
+          </Step>
+          <Step n={2} icon="cog">
+            Go to <span className="font-semibold">Settings</span>
+            <Icon
+              name="chevronRight"
+              size={14}
+              strokeWidth={2.4}
+              className="mx-0.5 inline-block align-[-2px] text-steel"
+            />
+            <span className="font-semibold">Phone &amp; remote</span>
+          </Step>
+          <Step n={3} icon="qr">
+            {scan ? (
+              <>
+                Tap <span className="font-semibold">Scan QR code</span> below
+                and point it at the code
+              </>
+            ) : (
+              "Scan the QR code with your phone's camera"
+            )}
+          </Step>
+        </ol>
+      )}
 
-      <p className="mt-3 px-1 text-[12.5px] leading-snug text-steel">
-        Using a Kvistcode server with no window? Run <span className="font-mono">kvistcode-server --pair</span> on it and open the link it prints.
-      </p>
+      {!server && (
+        <p className="mt-3 px-1 text-[12.5px] leading-snug text-steel">
+          Using a Kvistcode server with no window? Run{" "}
+          <span className="font-mono">kvistcode-server --pair</span> on it and
+          open the link it prints.
+        </p>
+      )}
 
       {standalone && (
         <Callout tone="warn" icon="info" title="Pair this Home Screen app">
@@ -326,7 +354,9 @@ export function Pairing() {
           size={14}
           className="mr-1.5 inline-block align-[-2px]"
         />
-        {hw("Pairing links work once and expire after 5 minutes. Only pair with a computer you own.")}
+        {hw(
+          "Pairing links work once and expire after 5 minutes. Only pair with a computer you own.",
+        )}
       </p>
     </Frame>
   );
@@ -357,7 +387,14 @@ export function Blocked() {
     let trying = false;
     const retry = () => {
       // No network on the phone: nothing to try until it comes back (the "online" event retries).
-      if (!shouldAutoRetry(document.visibilityState === "visible", navigator.onLine, trying)) return;
+      if (
+        !shouldAutoRetry(
+          document.visibilityState === "visible",
+          navigator.onLine,
+          trying,
+        )
+      )
+        return;
       trying = true;
       void retryConnect().finally(() => (trying = false));
     };
@@ -399,23 +436,27 @@ export function Blocked() {
           : offline
             ? hw("Your phone is offline")
             : unreachable
-            ? "Can't reach Kvistcode"
-            : unavailable
-              ? "Remote access is off"
-              : reason === "misdirected"
-                ? "Use Kvistcode's link"
-                : "Something went wrong"}
+              ? "Can't reach Kvistcode"
+              : unavailable
+                ? "Remote access is off"
+                : reason === "misdirected"
+                  ? "Use Kvistcode's link"
+                  : "Something went wrong"}
       </h1>
       <p className="mx-auto mt-2 max-w-[330px] text-center text-[15px] leading-relaxed text-muted">
         {rate
           ? (message ?? "Try again in a few minutes.")
           : offline
-            ? hw("Connect to Wi-Fi or mobile data to reach Kvistcode on your computer.")
+            ? hw(
+                "Connect to Wi-Fi or mobile data to reach Kvistcode on your computer.",
+              )
             : unreachable
-            ? hw("Your phone couldn't connect to Kvistcode on your computer.")
-            : unavailable
-              ? hw(`${message ?? "Kvistcode isn't accepting connections."} Turn it on in Settings → Phone & remote; this page reconnects by itself.`)
-              : message}
+              ? hw("Your phone couldn't connect to Kvistcode on your computer.")
+              : unavailable
+                ? hw(
+                    `${message ?? "Kvistcode isn't accepting connections."} Turn it on in Settings → Phone & remote; this page reconnects by itself.`,
+                  )
+                : message}
       </p>
 
       {unreachable && !offline && (
@@ -423,7 +464,9 @@ export function Blocked() {
           {[
             hw("Kvistcode is open and your computer is awake"),
             hw("Remote access is on in Settings → Phone & remote"),
-            hw("Your phone is on the same Wi-Fi as your computer, or connected to Tailscale"),
+            hw(
+              "Your phone is on the same Wi-Fi as your computer, or connected to Tailscale",
+            ),
           ].map((t) => (
             <li key={t} className="flex items-start gap-2.5">
               <Icon
@@ -436,7 +479,9 @@ export function Blocked() {
           ))}
           <li className="flex items-start gap-2.5 border-t border-line/70 pt-3 text-muted">
             <Icon name="qr" size={17} className="mt-0.5 shrink-0 text-steel" />
-            {hw("If your computer's network address changed (new Wi-Fi, router restart), scan the QR code in Kvistcode again.")}
+            {hw(
+              "If your computer's network address changed (new Wi-Fi, router restart), scan the QR code in Kvistcode again.",
+            )}
           </li>
         </ul>
       )}

@@ -30,6 +30,7 @@ It prints the address, a one-time pairing link and a QR code, then keeps running
 | `--lan` | Also reachable from your private network (plain HTTP). |
 | `--tailscale` | Reachable from your tailnet over HTTPS through Tailscale Serve. |
 | `--pair` | Print a new pairing link for the server that is already running. |
+| `--unpair-all` | Sign out every paired browser and phone (and share link) of the running server. |
 | `--no-tool-updates` | Don't install agent tools, don't check sign-ins, don't run a login shell for PATH. For tests and sandboxes. |
 
 With no `--lan` or `--tailscale` the server listens on `127.0.0.1` only. The flags are applied on every start; they are not remembered.
@@ -46,7 +47,7 @@ kvistcode-server --pair            # add --data-dir <path> if you used one
 
 It asks the running server (over a private socket in the data folder, readable only by you) for a fresh link. Anyone who can run that command as your user can already read your data, so it adds no new exposure.
 
-Revoking a browser: the phone app has no revoke button for a headless server. Stop the server, delete `remote.json` in the data folder, and start it again. All browsers have to pair again.
+Lost a device, or think someone else paired? Run `kvistcode-server --unpair-all` (add `--data-dir` if you used one). Every browser and phone is signed out at once and its live connection ends; pair the ones you keep again with `--pair`. There is no way yet to sign out just one device.
 
 ## Reaching it: LAN or Tailscale
 
@@ -116,7 +117,9 @@ Back up the whole folder to move the server. Set `KVISTCODE_LOG` (a tracing filt
 ## Security notes
 
 - Only one server per data folder. Two servers would corrupt each other's database, so the lock is exclusive.
-- Pairing links are single use, last 5 minutes and are never written to disk or logs. Device tokens are stored hashed.
+- Pairing links are single use and last 5 minutes. The server prints them to its output, so under systemd they land in the journal: anyone who can read your journal in those 5 minutes could pair first. If that matters, run `kvistcode-server --pair` from your own terminal instead. Device tokens are stored hashed.
+- The data folder must belong to you; the server makes it private (0700) and refuses to start if it can't.
+- `--lan` serves plain HTTP. Use it only on a network you trust; anywhere else use `--tailscale`.
 - Requests must carry the server's own Host and Origin, which blocks DNS rebinding and other websites from driving it.
 - `secrets.json` is plain JSON protected by file permissions only, like `~/.ssh`. Anyone who can read your home folder can read it. Use disk encryption on a machine you don't physically control.
 - A paired browser can start agents that run commands and edit files as your user. Treat pairing like giving someone a shell.

@@ -24,6 +24,8 @@ OPTIONS
                         startup. For tests and sandboxes (also KVISTCODE_NO_TOOL_UPDATES=1).
     --pair              Print a new pairing link for the server already running on
                         this data folder, and exit.
+    --unpair-all        Sign out every browser and phone paired with the server
+                        running on this data folder, and exit. Pair again with --pair.
     -h, --help          Show this help.
     -V, --version       Show the version.
 
@@ -37,6 +39,7 @@ pub struct Args {
     pub lan: bool,
     pub tailscale: bool,
     pub pair: bool,
+    pub unpair_all: bool,
     pub no_tool_updates: bool,
     pub help: bool,
     pub version: bool,
@@ -72,6 +75,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Args, String> {
             "--lan" => out.lan = true,
             "--tailscale" => out.tailscale = true,
             "--pair" => out.pair = true,
+            "--unpair-all" => out.unpair_all = true,
             "--no-tool-updates" => out.no_tool_updates = true,
             "-h" | "--help" => out.help = true,
             "-V" | "--version" => out.version = true,
@@ -80,6 +84,9 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Args, String> {
     }
     if std::env::var_os("KVISTCODE_NO_TOOL_UPDATES").is_some_and(|v| v == "1") {
         out.no_tool_updates = true;
+    }
+    if out.pair && out.unpair_all {
+        return Err("--pair and --unpair-all can't be combined; pick one".into());
     }
     if out.lan && out.tailscale {
         return Err("--lan and --tailscale can't be combined; pick one".into());
@@ -101,6 +108,7 @@ mod tests {
         assert_eq!(a.data_dir, Some(PathBuf::from("/x")));
         assert_eq!(a.port, Some(5000));
         assert!(a.lan && a.pair && !a.tailscale);
+        assert!(p(&["--unpair-all"]).unwrap().unpair_all);
     }
 
     #[test]
@@ -110,5 +118,6 @@ mod tests {
         assert!(p(&["--port", "abc"]).is_err());
         assert!(p(&["--lan", "--tailscale"]).is_err());
         assert!(p(&["--nope"]).is_err());
+        assert!(p(&["--pair", "--unpair-all"]).is_err());
     }
 }

@@ -323,6 +323,30 @@ pub(super) async fn set_response_style(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DailyBudgetBody {
+    /// Dollars per day; `null` removes the limit.
+    usd: Option<f64>,
+}
+
+/// The daily spending limit (the desktop's Settings → Budgets "Daily" field). The headless
+/// server has no other place to set it. Validation is the settings' own.
+pub(super) async fn set_daily_budget(
+    State(c): State<Ctx>,
+    ConnectInfo(peer): Peer,
+    headers: HeaderMap,
+    Json(body): Json<DailyBudgetBody>,
+) -> Result<StatusCode, ApiError> {
+    owner(&c.auth(&peer, &headers)?)?;
+    let core = c.remote.core();
+    let settings = core.update_settings(|s| s.daily_budget_usd = body.usd)?;
+    core.emit(KvistcodeEvent::SettingsChanged {
+        settings: Box::new(settings),
+    });
+    Ok(StatusCode::NO_CONTENT)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -869,6 +893,68 @@ mod tests {
         let (_, body) = rig.call("GET", "/api/state", Some(&owner), None).await;
         let state: Value = serde_json::from_str(&body).unwrap();
         assert_eq!(state["responseStyle"], "detailed");
+        rig.finish().await;
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn the_daily_limit_can_be_set_from_the_browser() {
+        let rig = rig().await;
+        let owner = rig.owner.clone();
+        let set = json!({ "usd": 12.5 });
+        assert_eq!(
+            rig.call("POST", "/api/daily-budget", None, Some(set.clone()))
+                .await
+                .0,
+            401
+        );
+        let held = rig.held_agent("COST one").await;
+        let viewer = rig.viewer(&held.id);
+        assert_eq!(
+            rig.call(
+                "POST",
+                "/api/daily-budget",
+                Some(&viewer),
+                Some(set.clone())
+            )
+            .await
+            .0,
+            403
+        );
+        for bad in [
+            json!({ "usd": 0 }),
+            json!({ "usd": -3 }),
+            json!({ "usd": "a" }),
+        ] {
+            let (code, _) = rig
+                .call("POST", "/api/daily-budget", Some(&owner), Some(bad.clone()))
+                .await;
+            assert!((400..500).contains(&code), "{bad} is refused: {code}");
+        }
+        let before = rig.core.settings().unwrap().daily_budget_usd;
+
+        let (code, body) = rig
+            .call("POST", "/api/daily-budget", Some(&owner), Some(set))
+            .await;
+        assert_eq!(code, 204, "{body}");
+        assert_ne!(before, Some(12.5));
+        let settings = rig.core.settings().unwrap();
+        assert_eq!(settings.daily_budget_usd, Some(12.5));
+        assert_eq!(settings.agent_budget_usd, Some(0.4));
+        let (_, body) = rig.call("GET", "/api/usage", Some(&owner), None).await;
+        let usage: Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(usage["budget"]["dailyBudgetUsd"], 12.5);
+
+        let (code, _) = rig
+            .call(
+                "POST",
+                "/api/daily-budget",
+                Some(&owner),
+                Some(json!({ "usd": null })),
+            )
+            .await;
+        assert_eq!(code, 204);
+        assert_eq!(rig.core.settings().unwrap().daily_budget_usd, None);
         rig.finish().await;
     }
 

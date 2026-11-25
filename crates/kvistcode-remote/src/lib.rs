@@ -1646,6 +1646,7 @@ impl Remote {
             .route("/api/usage", get(phone::usage))
             .route("/api/search", get(phone::search))
             .route("/api/response-style", post(phone::set_response_style))
+            .route("/api/daily-budget", post(phone::set_daily_budget))
             .route("/api/permissions", get(permissions))
             .route("/api/events", get(events))
             .layer(DefaultBodyLimit::max(MAX_REMOTE_BODY))
@@ -2171,19 +2172,38 @@ fn visible(scope: &Scope, agent_id: &str) -> Result<(), ApiError> {
     }
 }
 
-/// The phone app's ETag: it changes only with a new Kvistcode build.
-fn index_etag() -> &'static str {
-    static ETAG: std::sync::OnceLock<String> = std::sync::OnceLock::new();
-    ETAG.get_or_init(|| {
-        use std::hash::{Hash, Hasher};
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        REMOTE_HTML.hash(&mut h);
-        format!("\"{:016x}\"", h.finish())
+/// The phone app as served by the headless server: the same page, marked so the pairing
+/// screen (shown before any token exists) can explain how to pair with a server.
+fn headless_html() -> &'static str {
+    static HTML: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    HTML.get_or_init(|| {
+        REMOTE_HTML.replacen(
+            "<head>",
+            "<head><meta name=\"kvistcode-host\" content=\"server\">",
+            1,
+        )
     })
 }
 
-async fn index(headers: HeaderMap) -> Response {
-    let etag = index_etag();
+/// The phone app's ETag: it changes only with a new Kvistcode build (and differs for the
+/// headless server's page).
+fn index_etag(headless: bool) -> &'static str {
+    static ETAGS: std::sync::OnceLock<[String; 2]> = std::sync::OnceLock::new();
+    let tags = ETAGS.get_or_init(|| {
+        use std::hash::{Hash, Hasher};
+        let tag = |html: &str| {
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            html.hash(&mut h);
+            format!("\"{:016x}\"", h.finish())
+        };
+        [tag(REMOTE_HTML), tag(headless_html())]
+    });
+    &tags[usize::from(headless)]
+}
+
+async fn index(State(c): State<Ctx>, headers: HeaderMap) -> Response {
+    let headless = c.remote.headless.load(std::sync::atomic::Ordering::SeqCst);
+    let etag = index_etag(headless);
     // Revalidated on every launch (cheap 304), so updates show up right away.
     let cache = [
         (header::ETAG, HeaderValue::from_static(etag)),
@@ -2199,7 +2219,11 @@ async fn index(headers: HeaderMap) -> Response {
     let mut res = (
         cache,
         [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
-        REMOTE_HTML,
+        if headless {
+            headless_html()
+        } else {
+            REMOTE_HTML
+        },
     )
         .into_response();
     let h = res.headers_mut();

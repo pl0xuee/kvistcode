@@ -104,6 +104,7 @@ export class MockBackend implements Backend {
   private createSeq = 0;
   private readonly createdAt = Date.now();
   private responseStyle: ResponseStyle = "concise";
+  private dailyCap: number | null = 15;
   private layout = projectLayout;
 
   constructor(scenario: Scenario) {
@@ -239,13 +240,13 @@ export class MockBackend implements Backend {
         defaultPermissionMode: "ask",
         ...(this.s.scope === "owner" ? { responseStyle: this.responseStyle } : {}),
         // Like the server: the sidebar's layout and today's totals, for the owner only.
-        ...(this.s.old ? {} : { projectLayout: this.s.scope === "owner" ? this.layout : null, budget: this.s.scope === "owner" ? budgetStatus(agents) : null }),
+        ...(this.s.old ? {} : { projectLayout: this.s.scope === "owner" ? this.layout : null, budget: this.s.scope === "owner" ? budgetStatus(agents, this.dailyCap) : null }),
       };
     }
     if (path === "/api/usage" && !this.s.old) {
       if (this.s.scope !== "owner") throw new ApiError(403, "This is a read-only link.");
       if (this.s.fail.has("usage")) throw new ApiError(500, "usage failed (simulated)");
-      return { accounts: accountsWithUsage(Date.now()), budget: budgetStatus([...this.agents.values()]), at: Date.now() };
+      return { accounts: accountsWithUsage(Date.now()), budget: budgetStatus([...this.agents.values()], this.dailyCap), at: Date.now() };
     }
     if (path === "/api/permissions") {
       if (this.s.scope !== "owner") throw new ApiError(403, "This is a read-only link.");
@@ -266,6 +267,14 @@ export class MockBackend implements Backend {
       if (this.s.scope !== "owner") throw new ApiError(403, "This is a read-only link.");
       if (this.s.fail.has("search")) throw new ApiError(500, "search failed (simulated)");
       return this.search(new URLSearchParams(path.split("?")[1] ?? "").get("q") ?? "");
+    }
+    if (path === "/api/daily-budget" && method === "POST") {
+      if (this.s.scope !== "owner") throw new ApiError(403, "This is a read-only link.");
+      if (this.s.fail.has("daily-budget")) throw new ApiError(500, "save failed (simulated)");
+      const usd = (body as { usd: unknown }).usd;
+      if (usd !== null && (typeof usd !== "number" || !Number.isFinite(usd) || usd <= 0)) throw new ApiError(400, "The daily budget must be more than $0 (or empty for no cap)");
+      this.dailyCap = usd as number | null;
+      return undefined;
     }
     if (path === "/api/response-style" && method === "POST") {
       if (this.s.scope !== "owner") throw new ApiError(403, "This is a read-only link.");
