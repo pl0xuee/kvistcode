@@ -291,3 +291,73 @@ describe("stopped sub-agents", () => {
     expect(stepLabel("\n  cargo   test\n--all")).toBe("cargo test");
   });
 });
+
+describe("sub-agents that report back", () => {
+  const T0 = 1_000_000;
+  const MIN = 60_000;
+  const tool = (id: string, ts: number, patch: Partial<TimelineItem & { kind: "tool_call" }>): TimelineItem =>
+    ({
+      id,
+      agentId: "a",
+      seq: ts,
+      ts,
+      kind: "tool_call",
+      toolCallId: id,
+      title: id,
+      toolKind: "other",
+      status: "completed",
+      locations: [],
+      diffs: [],
+      output: "",
+      command: null,
+      ...patch,
+    }) as TimelineItem;
+  const user = (ts: number): TimelineItem => ({ id: `u${ts}`, agentId: "a", seq: ts, ts, kind: "user_message", text: "go" });
+  const launch = (id: string, ts: number) =>
+    tool(id, ts, { subagent: { description: id, background: true }, output: `Async agent launched successfully.\nagentId: ${id}-agent (x)` });
+  const child = (parent: string, ts: number, title = "cargo test") =>
+    tool(`${parent}-${ts}`, ts, { title, parentToolCallId: parent });
+  const handback = (parent: string, ts: number) => child(parent, ts, "SubagentHandback");
+  const resume = (parent: string, ts: number) =>
+    tool(`send-${ts}`, ts, {
+      title: "SendMessage",
+      output: `{"success":true,"message":"Resuming agent","resumedAgentId":"${parent}-agent"}`,
+    });
+  const states = (items: TimelineItem[], now: number) =>
+    Object.fromEntries(subagentRuns(items, true, { now, live: true }).map((r) => [r.toolCallId, r.state]));
+
+  // Several sub-agents launched, one reported; then a new message from the user, and some go quiet.
+  const items = [
+    user(T0),
+    launch("seams", T0 + 1_000),
+    launch("menu", T0 + 2_000),
+    child("menu", T0 + 3_000),
+    handback("menu", T0 + 4_000),
+    child("seams", T0 + 5_000),
+    user(T0 + 6_000),
+  ];
+
+  it("keeps a quiet one running until it reports, across a new message", () => {
+    const now = T0 + 20 * MIN;
+    expect(states(items, now)).toEqual({ seams: "running" });
+  });
+
+  it("still lets a long-silent one go", () => {
+    expect(states(items, T0 + 40 * MIN)).toEqual({});
+  });
+
+  it("counts one resumed after reporting as running again", () => {
+    const later = [...items, resume("menu", T0 + 7_000)];
+    expect(states(later, T0 + 8_000).menu).toBe("running");
+    const working = [...later, child("menu", T0 + 9_000)];
+    expect(states(working, T0 + 20 * MIN).menu).toBe("running");
+    const done = [...working, handback("menu", T0 + 10_000)];
+    expect(states(done, T0 + 20 * MIN).menu).toBeUndefined();
+  });
+
+  it("keeps the 90-second rule where nothing reports back", () => {
+    const plain = [user(T0), launch("seams", T0 + 1_000), child("seams", T0 + 5_000), user(T0 + 6_000)];
+    expect(states(plain, T0 + 5_000 + SUBAGENT_ACTIVE_WINDOW_MS - 1_000)).toEqual({ seams: "running" });
+    expect(states(plain, T0 + 20 * MIN)).toEqual({});
+  });
+});

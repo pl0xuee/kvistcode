@@ -286,6 +286,9 @@ export function isSubagentLive(status: Agent["status"]): boolean {
  * a `clock` it counts as running when the agent is live and ANY of: (a) busy and the call is after
  * the last user message; (b) a child call is unfinished or the latest child activity is within
  * SUBAGENT_ACTIVE_WINDOW_MS; (c) it launched within SUBAGENT_LAUNCH_GRACE_MS. Without a clock only (a) applies.
+ * Where the timeline shows sub-agents reporting back (SubagentHandback), that is the finish signal:
+ * one that hasn't reported yet stays running through quiet spells, up to SUBAGENT_STALE_CHILD_MS.
+ * A sub-agent resumed with SendMessage after reporting is running again.
  */
 export function subagentRuns(items: TimelineItem[] | undefined, busy: boolean, clock?: SubagentClock): SubagentRun[] {
   if (!items) return [];
@@ -301,8 +304,11 @@ export function subagentRuns(items: TimelineItem[] | undefined, busy: boolean, c
   const callCount = new Map<string, number>();
   const openChildTs = new Map<string, number>();
   // A sub-agent that has called SubagentHandback has reported its result: it is finished, whatever
-  // else the parent is still doing.
-  const handedBack = new Set<string>();
+  // else the parent is still doing, unless it acts again after (SendMessage resumes it). By parent: index.
+  const handedBack = new Map<string, number>();
+  const lastChildIdx = new Map<string, number>();
+  // SendMessage resuming a sub-agent, by agent id: [index, ts].
+  const resumed = new Map<string, [number, number]>();
   // Background sub-agents the agent stopped (Claude TaskStop, Antigravity manage_subagents kill).
   const stopped = new Set<string>();
   let killedAllBefore = -1;
@@ -315,11 +321,15 @@ export function subagentRuns(items: TimelineItem[] | undefined, busy: boolean, c
       } else if (/^manage_subagents\b/i.test(it.title)) {
         if (/\bkill_all\b|killed all/i.test(it.output)) killedAllBefore = i;
         for (const m of it.output.matchAll(/"?conversationId"?\s*[:=]\s*"?([\w-]+)"?/gi)) stopped.add(m[1]);
+      } else if (/^SendMessage\b/.test(it.title)) {
+        const id = /"resumedAgentId"\s*:\s*"([\w-]+)"/.exec(it.output)?.[1];
+        if (id) resumed.set(id, [i, it.ts]);
       }
     }
     if (it.kind === "tool_call" && it.parentToolCallId) {
-      if (/^SubagentHandback\b/i.test(it.title)) handedBack.add(it.parentToolCallId);
+      if (/^SubagentHandback\b/i.test(it.title)) handedBack.set(it.parentToolCallId, i);
       lastChild.set(it.parentToolCallId, it);
+      lastChildIdx.set(it.parentToolCallId, i);
       callCount.set(it.parentToolCallId, (callCount.get(it.parentToolCallId) ?? 0) + 1);
       lastChildTs.set(it.parentToolCallId, Math.max(it.ts, lastChildTs.get(it.parentToolCallId) ?? 0));
       if (unfinished(it.status))
@@ -334,20 +344,25 @@ export function subagentRuns(items: TimelineItem[] | undefined, busy: boolean, c
     const bg = isBackgroundLaunch(it);
     const open = unfinished(it.status) || (bg && it.status === "completed" && i > turnStartIdx);
     let running = open && busy;
-    const reported = handedBack.has(it.toolCallId);
+    const launchId = bg
+      ? (/\bagentId:\s*([\w-]+)/.exec(it.output)?.[1] ?? /"conversationId"\s*:\s*"([\w-]+)"/.exec(it.output)?.[1])
+      : undefined;
+    const resume = launchId !== undefined ? resumed.get(launchId) : undefined;
+    const handback = handedBack.get(it.toolCallId);
+    const reported =
+      handback !== undefined && lastChildIdx.get(it.toolCallId) === handback && !(resume && resume[0] > handback);
     if (bg && clock && it.status === "completed") {
-      const lastTs = lastChildTs.get(it.toolCallId);
+      const lastTs = Math.max(lastChildTs.get(it.toolCallId) ?? 0, resume?.[1] ?? 0) || undefined;
       const openTs = openChildTs.get(it.toolCallId);
       running =
         clock.live &&
         (running ||
           (openTs !== undefined && (busy || clock.now - openTs < SUBAGENT_STALE_CHILD_MS)) ||
           (lastTs !== undefined && clock.now - lastTs < SUBAGENT_ACTIVE_WINDOW_MS) ||
-          clock.now - it.ts < SUBAGENT_LAUNCH_GRACE_MS);
+          clock.now - it.ts < SUBAGENT_LAUNCH_GRACE_MS ||
+          // Sub-agents here report when done, so one that hasn't is only quiet.
+          (handedBack.size > 0 && clock.now - Math.max(lastTs ?? 0, it.ts) < SUBAGENT_STALE_CHILD_MS));
     }
-    const launchId = bg
-      ? (/\bagentId:\s*([\w-]+)/.exec(it.output)?.[1] ?? /"conversationId"\s*:\s*"([\w-]+)"/.exec(it.output)?.[1])
-      : undefined;
     if (reported || (launchId !== undefined && stopped.has(launchId)) || (bg && i < killedAllBefore)) running = false;
     if (!running && i <= turnStartIdx) continue;
     if (!running && unfinished(it.status)) continue; // stale: open call of an idle agent
