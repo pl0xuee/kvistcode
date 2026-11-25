@@ -33,6 +33,8 @@ export interface Scenario {
   old: boolean;
   /** `&relayout=<seconds>`: the sections are renamed and reordered on the computer after this long (0 = never). */
   relayoutSecs: number;
+  /** `&server=1`: act as the headless `kvistcode-server` (wide layout, its wording). */
+  server: boolean;
 }
 
 export function scenarioFromParams(p: URLSearchParams): Scenario {
@@ -53,6 +55,7 @@ export function scenarioFromParams(p: URLSearchParams): Scenario {
     extras: new Set(["quick", "plan", "group", "md", "dock", "hold", "pics"].filter((k) => p.get(k) === "1")),
     old: p.get("old") === "1",
     relayoutSecs: Math.max(0, Number(p.get("relayout") ?? 0) || 0),
+    server: p.get("server") === "1",
   };
 }
 
@@ -224,6 +227,7 @@ export class MockBackend implements Backend {
         scope: this.s.scope,
         agentId: this.s.scope === "viewer" ? VIEWER_AGENT : null,
         version: "0.1.0-dev",
+        ...(this.s.server ? { headless: true } : {}),
       };
       return session;
     }
