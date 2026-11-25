@@ -6,6 +6,7 @@ import { ensureTimeline } from "./lib/controller";
 import { navigate, useRoute } from "./lib/router";
 import { useNeedsYouCount } from "./lib/selectors";
 import { useWide } from "./lib/wide";
+import { isHeadless } from "./lib/host";
 import { DesktopHome } from "./screens/DesktopHome";
 import { useStore } from "./lib/store";
 import { AgentDetail } from "./screens/AgentDetail";
@@ -70,7 +71,10 @@ function Paired() {
     return () => cancelAnimationFrame(raf);
   }, [route]);
 
-  const wide = useWide() && !viewerAgent;
+  // Only on the headless server, where the browser is the only screen; the desktop app's phone
+  // view stays as it was.
+  const wideLayout = useWide();
+  const wide = wideLayout && !viewerAgent && isHeadless();
   // Fixed overlays (toasts) center on the pane, not the whole window.
   useEffect(() => {
     document.documentElement.classList.toggle("has-rail", wide);

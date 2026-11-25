@@ -26,7 +26,7 @@ import {
   type Meter,
   type Spend,
 } from "@/lib/usage";
-import { hw } from "@/lib/host";
+import { hw, isHeadless } from "@/lib/host";
 
 /** How often the open Usage screen reads again while the page is on screen. */
 const REFRESH_MS = 30_000;
@@ -84,7 +84,12 @@ export function Usage() {
                   <BudgetLine key={r.key} row={r} />
                 ))}
               </ul>
-              <DailyLimit cap={budget?.dailyBudgetUsd ?? null} anyLimit={hasDailyBudget(budget)} />
+              {/* The headless server has no other place to set it; with the desktop app it stays in Settings. */}
+              {isHeadless() ? (
+                <DailyLimit cap={budget?.dailyBudgetUsd ?? null} anyLimit={hasDailyBudget(budget)} />
+              ) : (
+                !hasDailyBudget(budget) && <p className="mt-3 text-[12.5px] leading-[18px] text-steel">{hw("No daily limit is set. Set one in Kvistcode on your computer.")}</p>
+              )}
             </div>
           </section>
         )}
