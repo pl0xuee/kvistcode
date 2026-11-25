@@ -62,7 +62,7 @@ export function usePhotoPicker(current: Attachment[], add: (list: Attachment[]) 
   return { element, open: () => input.current?.click(), openCamera: () => camera.current?.click(), busy, full };
 }
 
-export function AttachButton({ picker, className }: { picker: ReturnType<typeof usePhotoPicker>; className?: string }) {
+export function AttachButton({ picker, className, compact }: { picker: ReturnType<typeof usePhotoPicker>; className?: string; compact?: boolean }) {
   return (
     <button
       type="button"
@@ -70,11 +70,13 @@ export function AttachButton({ picker, className }: { picker: ReturnType<typeof 
       disabled={picker.busy || picker.full}
       aria-label={picker.full ? `Up to ${MAX_ATTACHMENTS} photos` : "Attach photos"}
       className={cn(
-        "press inline-flex h-12 w-11 shrink-0 items-center justify-center rounded-full text-steel active:bg-raised active:text-fg disabled:opacity-40",
+        compact
+          ? "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-steel hover:bg-raised hover:text-fg disabled:opacity-40"
+          : "press inline-flex h-12 w-11 shrink-0 items-center justify-center rounded-full text-steel active:bg-raised active:text-fg disabled:opacity-40",
         className,
       )}
     >
-      {picker.busy ? <Spinner size={18} /> : <Icon name="image" size={22} />}
+      {picker.busy ? <Spinner size={compact ? 14 : 18} /> : <Icon name="image" size={compact ? 16 : 22} />}
     </button>
   );
 }

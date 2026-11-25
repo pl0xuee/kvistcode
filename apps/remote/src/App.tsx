@@ -5,9 +5,9 @@ import { Toasts } from "./components/Toasts";
 import { ensureTimeline } from "./lib/controller";
 import { navigate, useRoute } from "./lib/router";
 import { useNeedsYouCount } from "./lib/selectors";
-import { useWide } from "./lib/wide";
-import { isHeadless } from "./lib/host";
+import { useDesk } from "./lib/wide";
 import { DesktopHome } from "./screens/DesktopHome";
+import { DeskLayout } from "./components/desk/Desk";
 import { useStore } from "./lib/store";
 import { AgentDetail } from "./screens/AgentDetail";
 import { Fleet } from "./screens/Fleet";
@@ -73,8 +73,7 @@ function Paired() {
 
   // Only on the headless server, where the browser is the only screen; the desktop app's phone
   // view stays as it was.
-  const wideLayout = useWide();
-  const wide = wideLayout && !viewerAgent && isHeadless();
+  const wide = useDesk();
   // Fixed overlays (toasts) center on the pane, not the whole window.
   useEffect(() => {
     document.documentElement.classList.toggle("has-rail", wide);
@@ -83,18 +82,11 @@ function Paired() {
 
   if (wide) {
     return (
-      <>
-        <aside aria-label="Agents" className="fixed inset-y-0 left-0 z-40 w-[var(--rail)] border-r border-line/70 bg-base">
-          <ErrorBoundary>
-            <Fleet rail />
-          </ErrorBoundary>
-        </aside>
-        <div data-pane className="pl-[var(--rail)]">
-          <ErrorBoundary resetKey={routeKey(route)}>
-            {route.name === "fleet" ? <DesktopHome /> : <Screen route={route} viewerAgent={null} />}
-          </ErrorBoundary>
-        </div>
-      </>
+      <DeskLayout>
+        <ErrorBoundary resetKey={routeKey(route)}>
+          {route.name === "fleet" ? <DesktopHome /> : <Screen route={route} viewerAgent={null} />}
+        </ErrorBoundary>
+      </DeskLayout>
     );
   }
 

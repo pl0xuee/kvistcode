@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AccountDot, ProviderBadge, StatusDot } from "@/components/Identity";
+import { useDesk } from "@/lib/wide";
 import { Composer, type ComposerHandle } from "@/components/Composer";
 import { AddAgentsSheet } from "@/components/AddAgents";
 import { Dock } from "@/components/dock/Dock";
@@ -94,6 +95,45 @@ const DetailHeader = memo(function DetailHeader({
   // The turn ended but a workflow (or a background agent) it launched still runs: say so instead of "Idle".
   const bg = withSubagents(useBackground(agent), useBackgroundSubagentCount(agent?.id));
   const running = backgroundActive(bg);
+  const desk = useDesk();
+
+  if (desk && !readOnly) {
+    // The desktop app's agent header: one line with folder / title, status and PR, actions on the right.
+    const folder = (agent?.projectPath ?? "").replace(/[\\/]+$/, "").split(/[\\/]/).pop();
+    return (
+      <header className="chrome sticky top-0 z-30 rounded-t-[14px] border-b border-line/70">
+        <div className="flex h-[52px] items-center gap-2.5 px-5">
+          {agent && meta ? (
+            <>
+              <ProviderBadge agent={agent} size={22} />
+              {folder && <span className="shrink-0 text-[14px] text-muted">{folder}</span>}
+              {folder && <span className="shrink-0 text-[14px] text-steel">/</span>}
+              <h1 className="min-w-0 truncate text-[14px] font-semibold text-fg">{agent.title}</h1>
+              <span className="flex shrink-0 items-center gap-1.5 text-[12.5px]">
+                <StatusDot status={running && !agent.budgetHold ? "working" : agent.status} size={6} />
+                {agent.budgetHold ? (
+                  <span className="text-warn">{holdLabel(agent.budgetHold)}</span>
+                ) : running ? (
+                  <span className="text-accent" title={backgroundDetail(bg)}>
+                    {backgroundShort(bg)}
+                  </span>
+                ) : (
+                  <span style={{ color: agent.status === "idle" || agent.status === "stopped" ? "var(--text-2)" : meta.color }}>{meta.label}</span>
+                )}
+              </span>
+              <PrChip agent={agent} inline />
+              <span className="flex-1" />
+              {otherPending > 0 && <IconButton icon="inbox" label="Inbox" badge={otherPending} tone="warn" onClick={() => navigate({ name: "inbox" })} />}
+              {onDetails && <IconButton icon="more" label="Agent details" onClick={onDetails} />}
+            </>
+          ) : (
+            <div className="skeleton h-4 w-48" />
+          )}
+        </div>
+        {below}
+      </header>
+    );
+  }
 
   return (
     <TopBar
@@ -346,16 +386,20 @@ function AgentView({
   const siblings = useSiblings(agent.id);
   const canAdd = !readOnly && canAddAgents(agent);
   const openAdd = useCallback(() => setAddOpen(true), []);
+  const desk = useDesk();
   const chips = useMemo(
     () => (
       <>
         <SiblingStrip agentId={agent.id} onAdd={canAdd ? openAdd : undefined} />
-        <SettingsChips agent={agent} onPick={setOptionSheet} />
-        <PrChip agent={agent} />
+        {/* On the desktop layout the settings sit in the message box and the PR in the header line. */}
+        {!desk && <SettingsChips agent={agent} onPick={setOptionSheet} />}
+        {!desk && <PrChip agent={agent} />}
       </>
     ),
-    [agent, canAdd, openAdd],
+    [agent, canAdd, openAdd, desk],
   );
+  // `undefined` keeps the phone's message box.
+  const composerTools = useMemo(() => (desk ? <SettingsChips agent={agent} onPick={setOptionSheet} inline /> : undefined), [agent, desk]);
   const banner = useMemo(
     () => (readOnly ? null : <Dock agent={agent} onSwitchAccount={() => setAccountSheet(true)} />),
     [agent, readOnly],
@@ -410,7 +454,7 @@ function AgentView({
         </div>
       )}
 
-      {!readOnly && <Composer agent={agent} banner={banner} handle={composer} />}
+      {!readOnly && <Composer agent={agent} banner={banner} handle={composer} tools={composerTools} />}
       {readOnly && <div className="h-[var(--safe-bottom)]" />}
 
       <AgentDetailsSheet

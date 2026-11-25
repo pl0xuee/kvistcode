@@ -36,7 +36,7 @@ function usePrStatus(agent: Agent) {
  * The agent's pull request in one line under the header: number, state, checks and review. Read-only; a tap opens
  * the PR on GitHub. Nothing is shown for a branch without a PR, or when GitHub can't be asked (the desktop says why).
  */
-export const PrChip = memo(function PrChip({ agent }: { agent: Agent }) {
+export const PrChip = memo(function PrChip({ agent, inline = false }: { agent: Agent; /** In the header line (headless wide layout). */ inline?: boolean }) {
   usePrStatus(agent);
   const snap = useStore((s) => s.prs[agent.id]);
   const chip = useMemo(() => prChip(snap), [snap]);
@@ -53,7 +53,19 @@ export const PrChip = memo(function PrChip({ agent }: { agent: Agent }) {
       {chip.url && <Icon name="arrowUpRight" size={14} className="shrink-0 text-steel" />}
     </>
   );
-  const cls = "inline-flex h-8 shrink-0 items-center gap-2 rounded-full border border-line-strong bg-card px-3 text-[12.5px] whitespace-nowrap";
+  const cls = inline
+    ? "inline-flex h-6 shrink-0 items-center gap-1.5 rounded-md border border-line bg-card px-2 text-[12px] whitespace-nowrap"
+    : "inline-flex h-8 shrink-0 items-center gap-2 rounded-full border border-line-strong bg-card px-3 text-[12.5px] whitespace-nowrap";
+  if (inline)
+    return chip.url ? (
+      <a href={chip.url} target="_blank" rel="noopener noreferrer" className={cn("hover:border-line-strong", cls)}>
+        {body}
+      </a>
+    ) : (
+      <span role="status" aria-label={chip.label} className={cls}>
+        {body}
+      </span>
+    );
   return (
     <div className="scroll-x border-t border-line/60 [@media(orientation:landscape)_and_(max-height:500px)]:hidden">
       <div className="mx-auto flex w-max min-w-full items-center px-safe py-1.5 md:w-full md:min-w-0 md:max-w-[860px]">

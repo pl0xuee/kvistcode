@@ -50,12 +50,54 @@ export function useScrollEdges(active: boolean) {
 }
 
 /** Header strip: one chip per session option, plus a running sub-agents badge. */
-export const SettingsChips = memo(function SettingsChips({ agent, onPick }: { agent: Agent; onPick: (optionId: string) => void }) {
+export const SettingsChips = memo(function SettingsChips({
+  agent,
+  onPick,
+  inline = false,
+}: {
+  agent: Agent;
+  onPick: (optionId: string) => void;
+  /** In the message box's bottom row, as on the desktop app (headless server's wide layout). */
+  inline?: boolean;
+}) {
   const options = visibleOptions(agent.configOptions);
   const busy = useStore((s) => s.busy);
   const shown = options.length > 0;
-  const { ref, edges } = useScrollEdges(shown);
+  const { ref, edges } = useScrollEdges(shown && !inline);
   if (!shown) return null;
+  if (inline) {
+    return (
+      <div className="flex min-w-0 items-center gap-0.5 overflow-hidden">
+        {options.map((o) => {
+          const saving = !!busy[`config:${agent.id}:${o.id}`];
+          const toggle = onOff(o);
+          const cls = "inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-[12.5px] text-muted transition-colors hover:bg-raised hover:text-fg";
+          if (toggle) {
+            const on = o.currentValue === toggle.on;
+            return (
+              <button
+                key={o.id}
+                type="button"
+                aria-pressed={on}
+                disabled={saving}
+                onClick={() => void setConfigOption(agent.id, o.id, on ? toggle.off : toggle.on)}
+                className={cn(cls, on && "text-accent")}
+              >
+                {saving ? <Spinner size={11} /> : <span className={cn("h-1.5 w-1.5 rounded-full", on ? "bg-accent" : "bg-line-strong")} aria-hidden />}
+                {o.name}
+              </button>
+            );
+          }
+          return (
+            <button key={o.id} type="button" onClick={() => onPick(o.id)} aria-haspopup="dialog" aria-label={`${o.name}: ${choiceName(o)}`} title={o.name} className={cls}>
+              <span className="max-w-[10rem] truncate">{choiceName(o)}</span>
+              {saving ? <Spinner size={11} /> : <Icon name="chevronDown" size={13} className="text-steel" />}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
   return (
     // Landscape phones: vertical space is precious; the settings stay in the details sheet.
     // The edge fades say there are more chips to scroll to.

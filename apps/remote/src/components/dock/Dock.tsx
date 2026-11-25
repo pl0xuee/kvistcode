@@ -36,6 +36,7 @@ import { formatElapsed } from "@/lib/thinking";
 import type { Agent, PermissionItem, QuestionItem, TimelineItem } from "@/lib/types";
 import { switchableAccounts } from "@/screens/AgentControls";
 import { hw } from "@/lib/host";
+import { useDesk } from "@/lib/wide";
 
 type Sheets = null | "options" | "reason" | "plan" | "question" | "chip-plan" | "chip-subagents";
 
@@ -199,6 +200,7 @@ function PermissionNeed({
   const respond = async (o: NonNullable<typeof allow>) => {
     if (await confirmOption(o)) void respondToPermission(agent.id, item.requestId, o.id);
   };
+  if (useDesk()) return <DeskPermissionNeed item={item} label={label} allow={allow} reject={reject} respond={respond} onSheet={onSheet} />;
   return (
     <section aria-label="Approval needed" aria-live="polite" className={CARD}>
       <CardHeader
@@ -230,6 +232,115 @@ function PermissionNeed({
         >
           Approve
         </Button>
+      </div>
+    </section>
+  );
+}
+
+type Option = NonNullable<ReturnType<typeof allowOnce>>;
+
+/** Keys for the open request, as on the desktop app; never while typing. */
+function useDeskKeys(keys: Record<string, (() => void) | null>) {
+  const ref = useRef(keys);
+  ref.current = keys;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      if (document.querySelector("[role=dialog]")) return;
+      const run = ref.current[(e.shiftKey ? "shift+" : "") + e.key.toLowerCase()];
+      if (!run) return;
+      e.preventDefault();
+      run();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+}
+
+function Kbd({ children }: { children: React.ReactNode }) {
+  return <kbd className="ml-1.5 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded border border-current/30 px-1 font-sans text-[10.5px] opacity-80">{children}</kbd>;
+}
+
+/** The desktop app's approval bar: the request, then one row of labelled choices with their keys. */
+function DeskPermissionNeed({
+  item,
+  label,
+  allow,
+  reject,
+  respond,
+  onSheet,
+}: {
+  item: PermissionItem;
+  label: string;
+  allow: Option | null;
+  reject: Option | null;
+  respond: (o: Option) => Promise<void>;
+  onSheet: (s: Sheets) => void;
+}) {
+  const always = item.options.find((o) => o.kind === "allow_always") ?? null;
+  useDeskKeys({
+    a: allow ? () => void respond(allow) : null,
+    "shift+a": always ? () => void respond(always) : null,
+    d: reject ? () => void respond(reject) : null,
+  });
+  const btn = "inline-flex h-8 shrink-0 items-center rounded-lg border px-3 text-[12.5px] font-medium transition-colors disabled:opacity-40";
+  return (
+    <section aria-label="Approval needed" aria-live="polite" className={cn(CARD, "rounded-[14px]")}>
+      <div className="flex items-start gap-3 px-4 pt-3 pb-2.5">
+        <span className="mt-px inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-warn/40 bg-warn/15 text-warn">
+          <Icon name="shield" size={15} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] leading-tight font-semibold tracking-[0.08em] text-warn uppercase">{label}</p>
+          <p className={cn("mt-0.5 line-clamp-2 text-[13.5px] leading-snug font-medium break-words text-fg", item.toolKind === "execute" && "font-mono text-[12.5px]")}>
+            {item.title}
+          </p>
+          {item.command && item.command !== item.title && <p className="mt-0.5 truncate font-mono text-[12px] text-steel">❯ {item.command.split("\n")[0]}</p>}
+        </div>
+        <button
+          type="button"
+          onClick={() => onSheet("options")}
+          aria-label="Show the full request and every option"
+          className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-[12.5px] text-muted hover:bg-raised hover:text-fg"
+        >
+          Details
+          <Icon name="chevronRight" size={14} />
+        </button>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 border-t border-line/60 bg-base/30 px-4 py-2.5">
+        <button
+          type="button"
+          disabled={!allow}
+          aria-label={allow ? `Approve: ${allow.name}` : "Approve"}
+          onClick={() => allow && void respond(allow)}
+          className={cn(btn, "border-warn bg-warn text-warn-fg hover:brightness-110")}
+        >
+          Allow once
+          <Kbd>A</Kbd>
+        </button>
+        {always && (
+          <button type="button" onClick={() => void respond(always)} className={cn(btn, "max-w-[18rem] border-line-strong bg-card text-fg hover:bg-raised")}>
+            <span className="truncate">{always.name}</span>
+            <Kbd>⇧A</Kbd>
+          </button>
+        )}
+        <span className="flex-1" />
+        <button
+          type="button"
+          disabled={!reject}
+          aria-label={reject ? `Deny: ${reject.name}` : "Deny"}
+          onClick={() => reject && void respond(reject)}
+          className={cn(btn, "border-err/40 bg-err/10 text-err hover:bg-err/15")}
+        >
+          Deny
+          <Kbd>D</Kbd>
+        </button>
+        <button type="button" onClick={() => onSheet("reason")} className={cn(btn, "border-transparent text-muted hover:bg-raised hover:text-fg")}>
+          <Icon name="pencil" size={13} className="mr-1.5" />
+          Deny with reason…
+        </button>
       </div>
     </section>
   );

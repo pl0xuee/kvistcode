@@ -533,7 +533,7 @@ function StopAll({ onDone }: { onDone: () => void }) {
   );
 }
 
-function SettingsSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function SettingsSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const session = useStore((s) => s.session);
   const [confirm, setConfirm] = useState(false);
   return (

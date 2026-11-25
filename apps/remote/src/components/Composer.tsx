@@ -79,10 +79,13 @@ export const Composer = memo(function Composer({
   agent,
   banner,
   handle,
+  tools,
 }: {
   agent: Agent;
   banner?: ReactNode;
   handle?: RefObject<ComposerHandle | null>;
+  /** The desktop layout (headless server, wide window): the box takes the desktop's shape, with these in its bottom row. */
+  tools?: ReactNode;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const [value, onChange] = useState(() => loadDraft(agent.id));
@@ -263,6 +266,7 @@ export const Composer = memo(function Composer({
   return (
     <div
       ref={root}
+      data-composer
       className="chrome sticky z-20 border-t border-line/70 pb-[max(10px,var(--safe-bottom-kb))]"
       style={{ bottom: "var(--kb, 0px)" }}
     >
@@ -317,82 +321,166 @@ export const Composer = memo(function Composer({
           </button>
         </div>
       )}
-      <form
-        aria-label="Reply"
-        className={cn("mx-auto flex w-full max-w-[860px] items-end gap-1.5 px-safe", busy && canSend && plan.note ? "pt-0.5" : "pt-2.5")}
-        onSubmit={(e) => {
-          e.preventDefault();
-          send();
-        }}
-      >
-        {picker.element}
-        <AttachButton picker={picker} className="-ml-1.5" />
-        {templates.length > 0 && (
-          <button
-            type="button"
-            onClick={openTemplates}
-            aria-label="Insert a template"
-            className="press hit relative -ml-1.5 inline-flex h-12 w-10 shrink-0 items-center justify-center rounded-full text-steel active:bg-raised active:text-fg"
-          >
-            <Icon name="bookText" size={21} />
-          </button>
-        )}
-        <label className="sr-only" htmlFor={`composer-${agent.id}`}>
-          Message {name}
-        </label>
-        <div className="composer-box flex min-h-12 min-w-0 flex-1 items-center rounded-[18px] border px-4 py-[9px] focus-within:border-accent/60">
-          <textarea
-            id={`composer-${agent.id}`}
-            ref={ref}
-            rows={1}
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Tab" && commands.length) {
-                e.preventDefault();
-                onChange(insertCommand(commands[0]));
-                return;
-              }
-              if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
-              const fine = window.matchMedia("(pointer: fine)").matches;
-              if (e.metaKey || e.ctrlKey || (fine && !e.shiftKey)) {
-                e.preventDefault();
-                send();
-              }
-            }}
-            placeholder={placeholder}
-            // Return sends only with a mouse and keyboard; on touch it is a line break.
-            enterKeyHint={window.matchMedia("(pointer: fine)").matches ? "send" : "enter"}
-            autoComplete="off"
-            autoCorrect="on"
-            spellCheck
-            className="block max-h-[168px] w-full resize-none bg-transparent text-[16px] leading-[22px] text-fg outline-none placeholder:text-steel"
-          />
-        </div>
-        {busy && !canSend ? (
-          <button
-            type="button"
-            onClick={() => void cancelTurn(agent.id)}
-            disabled={cancelling}
-            aria-label="Stop the current turn"
-            className="press inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-err/40 bg-err/12 text-err disabled:opacity-60"
-          >
-            {cancelling ? <Spinner size={18} /> : <Icon name="stop" size={20} />}
-          </button>
-        ) : (
-          <button
-            type="submit"
-            disabled={!canSend}
-            aria-label={busy ? (plan.mode === "deliver" ? "Send into the running turn" : "Queue message") : "Send"}
-            className={cn(
-              "press inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full",
-              canSend ? "send-glow text-accent-fg" : "bg-raised text-steel",
-            )}
-          >
-            <Icon name="arrowUp" size={22} strokeWidth={2.2} />
-          </button>
-        )}
-      </form>
+      {tools !== undefined ? (
+        <form
+          aria-label="Reply"
+          className={cn("mx-auto w-full max-w-[860px] px-safe", busy && canSend && plan.note ? "pt-0.5" : "pt-2.5")}
+          onSubmit={(e) => {
+            e.preventDefault();
+            send();
+          }}
+        >
+          {picker.element}
+          <label className="sr-only" htmlFor={`composer-${agent.id}`}>
+            Message {name}
+          </label>
+          <div className="composer-box rounded-[14px] border focus-within:border-accent/60">
+            <textarea
+              id={`composer-${agent.id}`}
+              ref={ref}
+              rows={1}
+              value={value}
+              onChange={(e) => onChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Tab" && commands.length) {
+                  e.preventDefault();
+                  onChange(insertCommand(commands[0]));
+                  return;
+                }
+                if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+                const fine = window.matchMedia("(pointer: fine)").matches;
+                if (e.metaKey || e.ctrlKey || (fine && !e.shiftKey)) {
+                  e.preventDefault();
+                  send();
+                }
+              }}
+              placeholder={placeholder}
+              // Return sends only with a mouse and keyboard; on touch it is a line break.
+              enterKeyHint={window.matchMedia("(pointer: fine)").matches ? "send" : "enter"}
+              autoComplete="off"
+              autoCorrect="on"
+              spellCheck
+              className="block max-h-[240px] min-h-[44px] w-full resize-none bg-transparent px-4 pt-3 pb-1 text-[14px] leading-[21px] text-fg outline-none placeholder:text-steel"
+            />
+            <div className="flex items-center gap-1 px-2 pb-2">
+              <AttachButton picker={picker} compact />
+              {templates.length > 0 && (
+                <button
+                  type="button"
+                  onClick={openTemplates}
+                  aria-label="Insert a template"
+                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-steel hover:bg-raised hover:text-fg"
+                >
+                  <Icon name="bookText" size={16} />
+                </button>
+              )}
+              {tools && <span className="mx-1 h-4 w-px shrink-0 bg-line" aria-hidden />}
+              {tools}
+              <span className="flex-1" />
+              {busy && !canSend ? (
+                <button
+                  type="button"
+                  onClick={() => void cancelTurn(agent.id)}
+                  disabled={cancelling}
+                  aria-label="Stop the current turn"
+                  className="press inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-err/40 bg-err/12 text-err disabled:opacity-60"
+                >
+                  {cancelling ? <Spinner size={14} /> : <Icon name="stop" size={15} />}
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={!canSend}
+                  aria-label={busy ? (plan.mode === "deliver" ? "Send into the running turn" : "Queue message") : "Send"}
+                  className={cn(
+                    "press inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+                    canSend ? "send-glow text-accent-fg" : "bg-raised text-steel",
+                  )}
+                >
+                  <Icon name="arrowUp" size={16} strokeWidth={2.4} />
+                </button>
+              )}
+            </div>
+          </div>
+        </form>
+      ) : (
+        <form
+          aria-label="Reply"
+          className={cn("mx-auto flex w-full max-w-[860px] items-end gap-1.5 px-safe", busy && canSend && plan.note ? "pt-0.5" : "pt-2.5")}
+          onSubmit={(e) => {
+            e.preventDefault();
+            send();
+          }}
+        >
+          {picker.element}
+          <AttachButton picker={picker} className="-ml-1.5" />
+          {templates.length > 0 && (
+            <button
+              type="button"
+              onClick={openTemplates}
+              aria-label="Insert a template"
+              className="press hit relative -ml-1.5 inline-flex h-12 w-10 shrink-0 items-center justify-center rounded-full text-steel active:bg-raised active:text-fg"
+            >
+              <Icon name="bookText" size={21} />
+            </button>
+          )}
+          <label className="sr-only" htmlFor={`composer-${agent.id}`}>
+            Message {name}
+          </label>
+          <div className="composer-box flex min-h-12 min-w-0 flex-1 items-center rounded-[18px] border px-4 py-[9px] focus-within:border-accent/60">
+            <textarea
+              id={`composer-${agent.id}`}
+              ref={ref}
+              rows={1}
+              value={value}
+              onChange={(e) => onChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Tab" && commands.length) {
+                  e.preventDefault();
+                  onChange(insertCommand(commands[0]));
+                  return;
+                }
+                if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+                const fine = window.matchMedia("(pointer: fine)").matches;
+                if (e.metaKey || e.ctrlKey || (fine && !e.shiftKey)) {
+                  e.preventDefault();
+                  send();
+                }
+              }}
+              placeholder={placeholder}
+              // Return sends only with a mouse and keyboard; on touch it is a line break.
+              enterKeyHint={window.matchMedia("(pointer: fine)").matches ? "send" : "enter"}
+              autoComplete="off"
+              autoCorrect="on"
+              spellCheck
+              className="block max-h-[168px] w-full resize-none bg-transparent text-[16px] leading-[22px] text-fg outline-none placeholder:text-steel"
+            />
+          </div>
+          {busy && !canSend ? (
+            <button
+              type="button"
+              onClick={() => void cancelTurn(agent.id)}
+              disabled={cancelling}
+              aria-label="Stop the current turn"
+              className="press inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-err/40 bg-err/12 text-err disabled:opacity-60"
+            >
+              {cancelling ? <Spinner size={18} /> : <Icon name="stop" size={20} />}
+            </button>
+          ) : (
+            <button
+              type="submit"
+              disabled={!canSend}
+              aria-label={busy ? (plan.mode === "deliver" ? "Send into the running turn" : "Queue message") : "Send"}
+              className={cn(
+                "press inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full",
+                canSend ? "send-glow text-accent-fg" : "bg-raised text-steel",
+              )}
+            >
+              <Icon name="arrowUp" size={22} strokeWidth={2.2} />
+            </button>
+          )}
+        </form>
+      )}
       <TemplateSheet open={templatesOpen} templates={templates} onClose={() => setTemplatesOpen(false)} onInsert={insertTemplate} />
     </div>
   );

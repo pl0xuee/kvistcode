@@ -691,14 +691,51 @@
   }
 }
 
-/* Wide layout: the agent list stays on the left (App.tsx). */
+/* Wide layout on the headless server, laid out like the desktop app (components/desk): a 40px title
+   bar, the agent list on the panel colour, and the open screen on a framed sheet. */
 .has-rail {
-  --rail: 384px;
+  --rail: 300px;
+  --desk-top: 40px;
+  --desk-gap: 8px;
 }
-@media (min-width: 1440px) {
-  .has-rail {
-    --rail: 420px;
-  }
+.has-rail body {
+  background: var(--bg-0);
+}
+/* The window's own scrollbar would sit outside the sheet, on the frame. */
+html.has-rail {
+  scrollbar-width: none;
+}
+html.has-rail::-webkit-scrollbar {
+  display: none;
+}
+.desk-pane {
+  padding: var(--desk-top) var(--desk-gap) var(--desk-gap) var(--rail);
+}
+/* Rounded edge plus the panel colour around it, drawn over whatever scrolls past. */
+.desk-frame {
+  top: var(--desk-top);
+  left: var(--rail);
+  right: var(--desk-gap);
+  bottom: var(--desk-gap);
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  box-shadow:
+    0 0 0 100vmax var(--bg-1),
+    inset 0 1px 0 var(--edge);
+}
+/* Sticky pieces stop at the sheet's edge, not the window's. */
+.has-rail [data-pane] header.chrome {
+  top: var(--desk-top);
+  padding-top: 0;
+}
+.has-rail [data-pane] [data-composer] {
+  bottom: var(--desk-gap) !important;
+}
+.desk-raised {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-3) 92%, white), var(--bg-3));
+  box-shadow:
+    inset 0 1px 0 var(--edge-strong),
+    0 8px 18px -10px rgba(0, 0, 0, 0.7);
 }
 /* The list is always there, so "Back to agents" has nowhere to go. */
 [data-pane] header button[aria-label="Back to agents"] {

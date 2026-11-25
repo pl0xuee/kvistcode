@@ -1,4 +1,6 @@
 import { useSyncExternalStore } from "react";
+import { isHeadless } from "./host";
+import { useStore } from "./store";
 
 /**
  * A computer-sized window (a desktop browser on the headless server, a laptop, a large tablet in
@@ -22,4 +24,14 @@ export function isWide(): boolean {
 
 export function useWide(): boolean {
   return useSyncExternalStore(subscribe, isWide, () => false);
+}
+
+/**
+ * The desktop-app layout (components/desk): a wide window on the headless server, where the browser
+ * is the only screen. Not for a read-only link, and never on the desktop app's own phone view.
+ */
+export function useDesk(): boolean {
+  const wide = useWide();
+  const viewer = useStore((s) => s.session?.scope === "viewer");
+  return wide && !viewer && isHeadless();
 }
