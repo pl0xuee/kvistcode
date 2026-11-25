@@ -6,16 +6,20 @@
 //! open it (the folder is `0700`, the socket `0600`). One request type: connect, read one
 //! JSON line `{"url": ..., "expiresAt": ...}` or `{"error": ...}`, done.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(unix)]
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use kvistcode_remote::Remote;
 
+#[cfg(unix)]
 pub fn socket_path(data_dir: &Path) -> PathBuf {
     data_dir.join("admin.sock")
 }
 
-/// The reply of one admin request.
+/// The reply of one admin request (only ever built on Unix, where the socket exists).
+#[cfg_attr(not(unix), allow(dead_code))]
 pub struct PairingLink {
     pub url: String,
     pub expires_at: i64,

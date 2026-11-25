@@ -83,7 +83,7 @@ fn main() {
 
     // No OS keychain on most servers: keep secrets in a private file in the data folder.
     // (`KVISTCODE_SECRETS=memory` still wins; that is for tests.)
-    if std::env::var_os("KVISTCODE_SECRETS").is_none() {
+    if std::env::var_os("KVISTCODE_SECRETS").is_none_or(|v| v != "memory") {
         if let Err(e) = kvistcode_core::use_file_secrets(data_dir.join("secrets.json")) {
             fail(&format!("{e:#}"));
         }
@@ -240,6 +240,7 @@ async fn run(args: args::Args, data_dir: PathBuf) -> anyhow::Result<()> {
         for task in &background {
             task.abort();
         }
+        #[cfg(unix)]
         let _ = std::fs::remove_file(admin::socket_path(&data_dir));
         remote.shutdown().await;
         info!("shutting down agents");
