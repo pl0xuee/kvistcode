@@ -293,6 +293,8 @@ async fn run(args: args::Args, data_dir: PathBuf) -> anyhow::Result<bool> {
         background.push(updater.spawn_background());
         updater
     });
+    #[cfg(not(unix))]
+    let _ = args.no_auto_update; // no self-update off Unix
     #[cfg(unix)]
     let restart = updater.as_ref().map(|u| u.restart.clone());
     #[cfg(not(unix))]

@@ -899,8 +899,10 @@ mod tests {
     }
 
     /// Stands in for the headless server's updater.
+    #[cfg(unix)]
     struct FakeUpdater(Mutex<Vec<String>>);
 
+    #[cfg(unix)]
     impl crate::ServerUpdate for FakeUpdater {
         fn status(&self) -> Value {
             json!({ "current": "1.0.0", "calls": *self.0.lock() })
