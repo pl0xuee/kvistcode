@@ -102,8 +102,8 @@ describe("sidebarGroupOf (Minimal sidebar: Activity or Projects)", () => {
     expect(sidebarGroupOf("project", 0)).toBe("project");
   });
 
-  it("without one, shows projects to people who made sections, activity to everyone else", () => {
+  it("without one, shows projects", () => {
     expect(sidebarGroupOf(null, 2)).toBe("project");
-    expect(sidebarGroupOf(null, 0)).toBe("activity");
+    expect(sidebarGroupOf(null, 0)).toBe("project");
   });
 });

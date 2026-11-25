@@ -17,7 +17,7 @@ export function useTerminal(): boolean {
 
 /**
  * The sidebar lists agents by activity (Minimal, "Activity"): ⌘1–9 and the like follow that order.
- * `sections`: how many sections the user made (with none chosen, people with sections see projects).
+ * `sections`: how many sections the user made (no longer changes the default, which is projects).
  */
 export const byActivity = (s: { look: Look; sidebarGroup: SidebarGroup | null }, sections: number): boolean =>
   s.look !== "classic" && sidebarGroupOf(s.sidebarGroup, sections) === "activity";

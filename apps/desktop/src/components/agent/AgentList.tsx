@@ -184,7 +184,7 @@ export function AgentList({
   );
   // Minimal lists agents by what is happening unless "By project" is chosen; Classic always lists by project.
   const minimal = useMinimal();
-  // Not chosen yet: people who made sections see them (by project), everyone else sees activity.
+  // Not chosen yet: by project.
   const sectionCount = useApp((s) => s.settings?.projectLayout?.sections.length ?? 0);
   const sidebarGroup = sidebarGroupOf(
     useUi((s) => s.sidebarGroup),
@@ -683,8 +683,8 @@ export function AgentList({
               value={sidebarGroup}
               onChange={(g) => useUi.getState().setSidebarGroup(g)}
               options={[
-                { value: "activity", label: "Activity" },
                 { value: "project", label: "Projects" },
+                { value: "activity", label: "Activity" },
               ]}
             />
           </div>

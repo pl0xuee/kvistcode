@@ -72,9 +72,9 @@ export function readSidebarGroup(): SidebarGroup | null {
   }
 }
 
-/** The grouping in effect: the saved choice, else by project for people who made sections, else by activity. */
-export function sidebarGroupOf(saved: SidebarGroup | null, sections: number): SidebarGroup {
-  return saved ?? (sections > 0 ? "project" : "activity");
+/** The grouping in effect: the saved choice, else by project. (`_sections` is kept for callers; it no longer matters.) */
+export function sidebarGroupOf(saved: SidebarGroup | null, _sections?: number): SidebarGroup {
+  return saved ?? "project";
 }
 
 export function saveSidebarGroup(group: SidebarGroup) {
