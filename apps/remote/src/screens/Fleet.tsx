@@ -24,8 +24,9 @@ import type { Agent, ProjectSection as LayoutSection } from "@/lib/types";
 import { ConversationSearch } from "@/components/ConversationSearch";
 import { InstallTip, installTipApplies } from "@/components/InstallTip";
 import { ResponseStyleRow } from "@/components/ResponseStyleRow";
+import { ServerUpdateRow } from "@/components/ServerUpdateRow";
 import { EmptyState, ErrorState } from "./States";
-import { hw } from "@/lib/host";
+import { hw, isHeadless } from "@/lib/host";
 
 /** Fleet scroll position, restored when coming back from an agent. */
 let savedScroll = 0;
@@ -239,7 +240,7 @@ export function Fleet({ rail = false }: { rail?: boolean }) {
         </div>
       )}
       {!rail && owner && stateStatus === "ready" && (
-        <div className="pointer-events-none fixed right-[max(16px,var(--safe-right),calc((100vw_-_860px)/2_+_16px))] bottom-[max(18px,calc(var(--safe-bottom)+10px))] z-30 flex flex-col items-end gap-2">
+        <div className="pointer-events-none fixed right-[max(16px,var(--safe-right))] bottom-[max(18px,calc(var(--safe-bottom)+10px))] z-30 flex flex-col items-end gap-2">
           {offline && (
             <p role="status" className="animate-fade rounded-full border border-line-strong bg-card px-3 py-1 text-[12.5px] text-muted edge">
               Offline. Reconnect to start an agent.
@@ -554,8 +555,13 @@ export function SettingsSheet({ open, onClose }: { open: boolean; onClose: () =>
           <ConnectionPill />
         </Row>
         <Row label="Access">{session?.scope === "owner" ? "Full control" : "Read-only"}</Row>
-        {session?.version && <Row label="Kvistcode version">{session.version}</Row>}
+        {session?.version && !(isHeadless() && session.scope === "owner") && <Row label="Kvistcode version">{session.version}</Row>}
       </dl>
+      {isHeadless() && session?.scope === "owner" && (
+        <div className="border-t border-line/70">
+          <ServerUpdateRow />
+        </div>
+      )}
       {session?.scope === "owner" && <ResponseStyleRow />}
       {installTipApplies() && (
         <div className="mt-4">

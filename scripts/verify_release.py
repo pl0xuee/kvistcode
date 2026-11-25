@@ -76,10 +76,22 @@ def main() -> int:
             problems.append(f"missing {label} bundle (expected {pat})")
         elif found[0] + ".sig" not in names:
             problems.append(f"{found[0]} has no .sig")
+    # The headless server, its own download (the `server` job; signed for its own updater, not in
+    # latest.json), and its one-line installer.
+    for arch in ("x86_64", "aarch64"):
+        tarball = f"kvistcode-server-{version}-linux-{arch}.tar.gz"
+        if tarball not in names:
+            problems.append(f"missing server download {tarball}")
+            continue
+        for ext in (".sha256", ".sig"):
+            if tarball + ext not in names:
+                problems.append(f"{tarball} has no {ext}")
+    if "kvistcode-server-install.sh" not in names:
+        problems.append("missing kvistcode-server-install.sh (the one-line server installer)")
     if "latest.json" not in names:
         problems.append("missing latest.json")
     for n in names:
-        if not n.startswith(("Kvistcode", "latest")):
+        if not n.startswith(("Kvistcode", "kvistcode-server-", "latest")):
             problems.append(f"unexpected asset name {n} (pre-rename build?)")
 
     # ---- latest.json --------------------------------------------------------------

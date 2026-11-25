@@ -5,6 +5,17 @@ and the notes shown by the in-app updater, so write for people using the app.
 `scripts/release_notes.py` refuses to cut a release whose section is missing or empty (see
 docs/RELEASING.md).
 
+## v0.9.0 — 2026-11-25
+
+Run Kvistcode without a window on a server and drive it from any browser, plus a more accurate sub-agent count and Projects as the default sidebar view.
+
+- New: `kvistcode-server`, Kvistcode with no window. Run your agents on a home server, a VPS or a spare laptop and control them from a browser on any phone or computer. Pair a browser with the printed link or QR code; `--pair` prints a new link and `--unpair-all` signs every browser out. It keeps its data in its own folder, never the desktop app's. It is a separate download for Linux (x86_64 and ARM64), so you don't need the desktop app. One command installs it, starts it on every boot and prints the pairing link; see docs/SERVER-SETUP.md, which also has a note you can hand to an AI agent to set it up for you.
+- The server updates itself: it checks for new versions, refuses any download whose signature doesn't match, installs it once no agent is working and restarts in place. Update right away with `kvistcode-server --update` or from Settings in the browser; `--no-auto-update` turns the automatic install off.
+- In a wide browser window the server's web app looks like the desktop app: the agent list on the left with Projects and Activity, a one-line header, the message box with its settings chips, and permission requests you can answer with A, Shift+A and D.
+- Set the daily spending limit from the server's web app (Usage).
+- The sidebar now shows Projects first, and it is the default view. If you picked Activity before, Kvistcode keeps it.
+- "Waiting on sub-agents" no longer counts more sub-agents than are actually running: background sub-agents that have reported back count as done, and ones you resume count as running again.
+
 ## v0.8.1 — 2026-11-25
 
 Add agents from the ACP Registry, more presets, a smarter message box, keyboard shortcuts you can change, and Codex, OpenCode and Cursor catching up with Claude.

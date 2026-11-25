@@ -8,6 +8,8 @@ mod args;
 mod banner;
 mod lock;
 mod maintenance;
+#[cfg(unix)]
+mod update;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -51,6 +53,10 @@ fn main() {
             ),
             Err(e) => fail(&e),
         }
+        return;
+    }
+    if args.update {
+        run_update(&data_dir);
         return;
     }
     if args.unpair_all {
@@ -99,16 +105,64 @@ fn main() {
         Ok(r) => r,
         Err(e) => fail(&format!("couldn't start the async runtime: {e}")),
     };
-    let code = match runtime.block_on(run(args, data_dir)) {
-        Ok(()) => 0,
+    let (code, restart) = match runtime.block_on(run(args, data_dir)) {
+        Ok(restart) => (0, restart),
         Err(e) => {
             eprintln!("kvistcode-server: {e:#}");
-            1
+            (1, false)
         }
     };
     // Agent processes are already stopped; don't wait for stray runtime tasks.
     runtime.shutdown_timeout(Duration::from_secs(2));
+    if restart {
+        drop(_log_guard);
+        restart_in_place();
+    }
     std::process::exit(code);
+}
+
+/// `--update`: through the running server if there is one, else by replacing the file.
+#[cfg(unix)]
+fn run_update(data_dir: &Path) {
+    println!("Looking for a newer version...");
+    match admin::update(data_dir) {
+        Ok(Some(v)) => println!(
+            "Kvistcode {v} is installed. The server restarts into it by itself once no agent is working."
+        ),
+        Ok(None) => println!("Kvistcode {VERSION} is the latest version."),
+        Err(Some(e)) => fail(&e),
+        Err(None) => {
+            let Some(exe) = update::current_exe() else {
+                fail("couldn't tell where kvistcode-server is installed");
+            };
+            match update::update_file(&exe) {
+                Ok(Some(v)) => println!(
+                    "Kvistcode {v} is installed. Start it again with `kvistcode-server` (or `systemctl --user restart kvistcode-server`)."
+                ),
+                Ok(None) => println!("Kvistcode {VERSION} is the latest version."),
+                Err(e) => fail(&e),
+            }
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn run_update(_: &Path) {
+    fail("--update isn't supported on this system; download the new version by hand");
+}
+
+/// Runs the freshly installed binary in this process (same pid, same arguments).
+fn restart_in_place() {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        if let Some(exe) = update::current_exe() {
+            let err = std::process::Command::new(exe)
+                .args(std::env::args_os().skip(1))
+                .exec();
+            fail(&format!("couldn't restart into the new version: {err}"));
+        }
+    }
 }
 
 fn fail(msg: &str) -> ! {
@@ -131,7 +185,8 @@ impl EventSink for ChannelSink {
     }
 }
 
-async fn run(args: args::Args, data_dir: PathBuf) -> anyhow::Result<()> {
+/// Runs until stopped. `Ok(true)`: an update was installed; restart into it.
+async fn run(args: args::Args, data_dir: PathBuf) -> anyhow::Result<bool> {
     let handle = tokio::runtime::Handle::current();
     let (tx, mut rx) = unbounded_channel::<KvistcodeEvent>();
     let sink: Arc<dyn EventSink> = Arc::new(ChannelSink(tx));
@@ -229,16 +284,45 @@ async fn run(args: args::Args, data_dir: PathBuf) -> anyhow::Result<()> {
             }
         }));
     }
-    match admin::serve(&data_dir, remote.clone()) {
+    // Updates: checked every few hours and, unless --no-auto-update, installed when idle.
+    // (--no-tool-updates turns them off: tests and sandboxes stay offline.)
+    #[cfg(unix)]
+    let updater = (!args.no_tool_updates).then(|| {
+        let updater = update::Updater::new(core.clone(), !args.no_auto_update);
+        remote.set_updater(Arc::new(update::WebHandle(updater.clone())));
+        background.push(updater.spawn_background());
+        updater
+    });
+    #[cfg(unix)]
+    let restart = updater.as_ref().map(|u| u.restart.clone());
+    #[cfg(not(unix))]
+    let restart: Option<Arc<tokio::sync::Notify>> = None;
+    #[cfg(unix)]
+    let served = admin::serve(&data_dir, remote.clone(), updater);
+    #[cfg(not(unix))]
+    let served = admin::serve(&data_dir, remote.clone());
+    match served {
         Ok(task) => background.push(task),
         Err(e) => warn!("`kvistcode-server --pair` won't work: {e:#}"),
     }
 
     print_startup(&remote, &args, &settings.remote.port).await;
 
-    wait_for_stop().await;
-    info!("stopping");
-    println!("Stopping: ending agents and closing the server.");
+    let restarting = tokio::select! {
+        _ = wait_for_stop() => false,
+        _ = async {
+            match &restart {
+                Some(r) => r.notified().await,
+                None => std::future::pending().await,
+            }
+        } => true,
+    };
+    info!(restarting, "stopping");
+    if restarting {
+        println!("Restarting into the new version: ending agents first.");
+    } else {
+        println!("Stopping: ending agents and closing the server.");
+    }
     let stopped = tokio::time::timeout(SHUTDOWN_DEADLINE, async {
         for task in &background {
             task.abort();
@@ -260,7 +344,7 @@ async fn run(args: args::Args, data_dir: PathBuf) -> anyhow::Result<()> {
     }
     // Anything still alive (a stuck handshake): end its whole process tree.
     let _ = tokio::task::spawn_blocking(kvistcode_core::kill_all_children).await;
-    Ok(())
+    Ok(restarting)
 }
 
 async fn print_startup(remote: &Arc<Remote>, args: &args::Args, port: &u16) {

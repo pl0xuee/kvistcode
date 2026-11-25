@@ -371,3 +371,104 @@ jobs:
           uploadUpdaterJson: true
           updaterJsonPreferNsis: true
           args: ${{ matrix.args }}
+
+  # The headless server (docs/HEADLESS.md) as its own download, for people who only want that.
+  server:
+    name: server (${{ matrix.arch }})
+    if: needs.draft.outputs.release == 'true'
+    needs: draft
+    environment: release
+    permissions:
+      contents: write # upload assets to the draft
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            platform: ubuntu-22.04
+          - arch: aarch64
+            platform: ubuntu-22.04-arm
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config cmake libssl-dev libdbus-1-dev libclang-dev
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            apps/desktop/package-lock.json
+            apps/remote/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: ". -> target"
+          key: release-server-${{ matrix.platform }}
+
+      # The Tauri CLI signs the tarball with the updater key; the server checks it before it
+      # installs an update (crates/kvistcode-server/src/update.rs).
+      - name: Install the Tauri CLI
+        working-directory: apps/desktop
+        run: npm ci
+
+      # Embedded into the binary; the release build refuses to go without it.
+      - name: Build the web app
+        working-directory: apps/remote
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build and package
+        env:
+          TAG: ${{ needs.draft.outputs.tag }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          cargo build --release --locked -p kvistcode-server
+          name="kvistcode-server-${TAG#v}-linux-$ARCH"
+          mkdir -p "dist/$name"
+          cp target/release/kvistcode-server LICENSE docs/HEADLESS.md "dist/$name/"
+          "dist/$name/kvistcode-server" --version | grep -qx "kvistcode-server ${TAG#v}"
+          tar -C dist -czf "dist/$name.tar.gz" "$name"
+          (cd dist && sha256sum "$name.tar.gz" > "$name.tar.gz.sha256")
+          echo "name=$name" >> "$GITHUB_ENV"
+          # The one-line installer, pinned to this version (uploaded once, by the x86_64 job).
+          if [ "$ARCH" = x86_64 ]; then
+            sed "s/@VERSION@/${TAG#v}/" scripts/install-server.sh > dist/kvistcode-server-install.sh
+          fi
+
+      # Signing secrets are passed to this step only.
+      - name: Sign
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          (cd apps/desktop && npx tauri signer sign "$GITHUB_WORKSPACE/dist/$name.tar.gz")
+          test -s "dist/$name.tar.gz.sig"
+
+      - name: Upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ID: ${{ needs.draft.outputs.id }}
+        run: |
+          files="$name.tar.gz $name.tar.gz.sha256 $name.tar.gz.sig"
+          [ -f dist/kvistcode-server-install.sh ] && files="$files kvistcode-server-install.sh"
+          for f in $files; do
+            # A re-run replaces its own earlier upload.
+            for old in $(gh api "repos/$GITHUB_REPOSITORY/releases/$ID/assets" --jq ".[] | select(.name == \"$f\") | .id"); do
+              gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$old"
+            done
+            gh api -X POST -H "Content-Type: application/octet-stream" --input "dist/$f" \
+              "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$ID/assets?name=$f" --silent
+          done

@@ -77,6 +77,7 @@ It checks that:
 
 - the release has the installers: `…_x64-setup.exe`, `…_amd64.AppImage`, `…_amd64.deb`, and `….x86_64.rpm`, named `Kvistcode…` (an `Armada…` name means a stale build);
 - every updater bundle has a matching `.sig`;
+- the headless server downloads are there: `kvistcode-server-<version>-linux-x86_64.tar.gz` and `-aarch64.tar.gz`, each with a `.sha256` and a `.sig` (built and signed by the `server` job with the updater key; the server's own updater checks the `.sig`; they are not in `latest.json`), plus `kvistcode-server-install.sh`, the one-line installer pinned to this version;
 - `latest.json` is for this version, has `linux-*` and `windows-*` entries (a missing platform means two upload jobs overwrote each other's `latest.json`: re-run the failed `release` job), every entry has a non-empty signature, and each URL is one of this release's assets;
 - the notes in `latest.json` are the version's `CHANGELOG.md` section.
 

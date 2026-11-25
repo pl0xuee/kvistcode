@@ -324,9 +324,11 @@ pub(super) async fn set_response_style(
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct DailyBudgetBody {
-    /// Dollars per day; `null` removes the limit.
+    /// Dollars per day; `null` removes the limit. Required, so a body without it (or with a
+    /// misspelled key) is refused instead of silently removing the limit.
+    #[serde(deserialize_with = "Option::deserialize")]
     usd: Option<f64>,
 }
 
@@ -896,6 +898,97 @@ mod tests {
         rig.finish().await;
     }
 
+    /// Stands in for the headless server's updater.
+    struct FakeUpdater(Mutex<Vec<String>>);
+
+    impl crate::ServerUpdate for FakeUpdater {
+        fn status(&self) -> Value {
+            json!({ "current": "1.0.0", "calls": *self.0.lock() })
+        }
+        fn check(&self) {
+            self.0.lock().push("check".into());
+        }
+        fn install(&self, now: bool) -> Result<(), String> {
+            self.0.lock().push(format!("install now={now}"));
+            if now {
+                Err("busy".into())
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn server_updates_are_for_owners_of_the_headless_server_only() {
+        let rig = rig().await;
+        let owner = rig.owner.clone();
+        // The desktop app has no updater here: it updates itself.
+        let (code, _) = rig
+            .call("GET", "/api/server-update", Some(&owner), None)
+            .await;
+        assert_eq!(code, 404);
+
+        let fake = Arc::new(FakeUpdater(Mutex::new(Vec::new())));
+        rig.remote.set_updater(fake.clone());
+        assert_eq!(
+            rig.call("GET", "/api/server-update", None, None).await.0,
+            401
+        );
+        let held = rig.held_agent("COST one").await;
+        let viewer = rig.viewer(&held.id);
+        for (method, path) in [
+            ("GET", "/api/server-update"),
+            ("POST", "/api/server-update"),
+            ("POST", "/api/server-update/check"),
+        ] {
+            let (code, _) = rig.call(method, path, Some(&viewer), None).await;
+            assert_eq!(code, 403, "{method} {path}");
+        }
+        assert!(fake.0.lock().is_empty());
+
+        let (code, body) = rig
+            .call("GET", "/api/server-update", Some(&owner), None)
+            .await;
+        assert_eq!(code, 200);
+        assert_eq!(
+            serde_json::from_str::<Value>(&body).unwrap()["current"],
+            "1.0.0"
+        );
+        let (code, _) = rig
+            .call("POST", "/api/server-update/check", Some(&owner), None)
+            .await;
+        assert_eq!(code, 200);
+        let (code, _) = rig
+            .call("POST", "/api/server-update", Some(&owner), None)
+            .await;
+        assert_eq!(code, 200);
+        let (code, body) = rig
+            .call(
+                "POST",
+                "/api/server-update",
+                Some(&owner),
+                Some(json!({ "now": true })),
+            )
+            .await;
+        assert_eq!(code, 409);
+        assert!(body.contains("busy"), "{body}");
+        let (code, _) = rig
+            .call(
+                "POST",
+                "/api/server-update",
+                Some(&owner),
+                Some(json!({ "nwo": true })),
+            )
+            .await;
+        assert!((400..500).contains(&code));
+        assert_eq!(
+            *fake.0.lock(),
+            ["check", "install now=false", "install now=true"]
+        );
+        rig.finish().await;
+    }
+
     #[cfg(unix)]
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn the_daily_limit_can_be_set_from_the_browser() {
@@ -925,6 +1018,8 @@ mod tests {
             json!({ "usd": 0 }),
             json!({ "usd": -3 }),
             json!({ "usd": "a" }),
+            json!({}),
+            json!({ "usdd": 5 }),
         ] {
             let (code, _) = rig
                 .call("POST", "/api/daily-budget", Some(&owner), Some(bad.clone()))

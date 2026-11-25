@@ -511,6 +511,8 @@ pub struct Remote {
     apply_lock: tokio::sync::Mutex<()>,
     /// Running without a desktop app (the headless server): the phone app words itself for that.
     headless: std::sync::atomic::AtomicBool,
+    /// The headless server's self-update, offered to the web app (`None` in the desktop app).
+    updater: Mutex<Option<Arc<dyn ServerUpdate>>>,
     /// Set at app exit: later `apply` calls (e.g. the startup one) do nothing.
     shutting_down: std::sync::atomic::AtomicBool,
     error: Mutex<Option<String>>,
@@ -871,6 +873,7 @@ impl Remote {
             epoch: Mutex::new(0),
             apply_lock: tokio::sync::Mutex::new(()),
             headless: std::sync::atomic::AtomicBool::new(false),
+            updater: Mutex::new(None),
             shutting_down: std::sync::atomic::AtomicBool::new(false),
             error: Mutex::new(None),
             tokens_problem: Mutex::new(loaded.problem),
@@ -1186,6 +1189,11 @@ impl Remote {
     pub fn set_headless(&self, headless: bool) {
         self.headless
             .store(headless, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Offers the headless server's self-update to the web app (`/api/server-update`).
+    pub fn set_updater(&self, updater: Arc<dyn ServerUpdate>) {
+        *self.updater.lock() = Some(updater);
     }
 
     /// The address clients use, once the server runs (the Tailscale URL when that is on).
@@ -1647,6 +1655,11 @@ impl Remote {
             .route("/api/search", get(phone::search))
             .route("/api/response-style", post(phone::set_response_style))
             .route("/api/daily-budget", post(phone::set_daily_budget))
+            .route(
+                "/api/server-update",
+                get(server_update_status).post(server_update_install),
+            )
+            .route("/api/server-update/check", post(server_update_check))
             .route("/api/permissions", get(permissions))
             .route("/api/events", get(events))
             .layer(DefaultBodyLimit::max(MAX_REMOTE_BODY))
@@ -2153,6 +2166,70 @@ impl Ctx {
 }
 
 type Peer = ConnectInfo<SocketAddr>;
+
+/// Self-update of the headless server (`kvistcode-server`), which owns the logic; this crate
+/// only offers it to paired owners.
+pub trait ServerUpdate: Send + Sync {
+    /// What the web app shows: versions, what it is doing, whether it can install.
+    fn status(&self) -> Value;
+    /// Looks for a newer release now (in the background).
+    fn check(&self);
+    /// Downloads, verifies and installs the newest release, then restarts once no agent is
+    /// working (`now`: without waiting). `Err` is a message for the person.
+    fn install(&self, now: bool) -> Result<(), String>;
+}
+
+fn updater(
+    c: &Ctx,
+    peer: &SocketAddr,
+    headers: &HeaderMap,
+) -> Result<Arc<dyn ServerUpdate>, ApiError> {
+    owner(&c.auth(peer, headers)?)?;
+    c.remote.updater.lock().clone().ok_or_else(|| {
+        ApiError(
+            StatusCode::NOT_FOUND,
+            "Updates are handled by the desktop app.".into(),
+        )
+    })
+}
+
+async fn server_update_status(
+    State(c): State<Ctx>,
+    ConnectInfo(peer): Peer,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ApiError> {
+    Ok(Json(updater(&c, &peer, &headers)?.status()))
+}
+
+async fn server_update_check(
+    State(c): State<Ctx>,
+    ConnectInfo(peer): Peer,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ApiError> {
+    let u = updater(&c, &peer, &headers)?;
+    u.check();
+    Ok(Json(u.status()))
+}
+
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct InstallBody {
+    #[serde(default)]
+    now: bool,
+}
+
+async fn server_update_install(
+    State(c): State<Ctx>,
+    ConnectInfo(peer): Peer,
+    headers: HeaderMap,
+    body: Option<Json<InstallBody>>,
+) -> Result<Json<Value>, ApiError> {
+    let u = updater(&c, &peer, &headers)?;
+    let now = body.map(|b| b.0.now).unwrap_or_default();
+    u.install(now)
+        .map_err(|e| ApiError(StatusCode::CONFLICT, e))?;
+    Ok(Json(u.status()))
+}
 
 fn owner(scope: &Scope) -> Result<(), ApiError> {
     match scope {

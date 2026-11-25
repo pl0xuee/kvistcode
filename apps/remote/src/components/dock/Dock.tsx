@@ -248,6 +248,8 @@ function useDeskKeys(keys: Record<string, (() => void) | null>) {
       if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      // Not while moving around the agent list, the title bar or a results list.
+      if (t?.closest?.("aside, .desk-titlebar, [role=listbox], [role=menu]")) return;
       if (document.querySelector("[role=dialog]")) return;
       const run = ref.current[(e.shiftKey ? "shift+" : "") + e.key.toLowerCase()];
       if (!run) return;

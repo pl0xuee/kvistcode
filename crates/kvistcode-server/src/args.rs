@@ -26,6 +26,12 @@ OPTIONS
                         this data folder, and exit.
     --unpair-all        Sign out every browser and phone paired with the server
                         running on this data folder, and exit. Pair again with --pair.
+    --update            Update to the latest version now. A running server installs it
+                        and restarts once no agent is working; otherwise the file is
+                        replaced and you start it again.
+    --no-auto-update    Don't install updates by themselves (the web app still says
+                        when one is out). By default the server installs updates
+                        when no agent is working.
     -h, --help          Show this help.
     -V, --version       Show the version.
 
@@ -40,6 +46,8 @@ pub struct Args {
     pub tailscale: bool,
     pub pair: bool,
     pub unpair_all: bool,
+    pub update: bool,
+    pub no_auto_update: bool,
     pub no_tool_updates: bool,
     pub help: bool,
     pub version: bool,
@@ -76,6 +84,8 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Args, String> {
             "--tailscale" => out.tailscale = true,
             "--pair" => out.pair = true,
             "--unpair-all" => out.unpair_all = true,
+            "--update" => out.update = true,
+            "--no-auto-update" => out.no_auto_update = true,
             "--no-tool-updates" => out.no_tool_updates = true,
             "-h" | "--help" => out.help = true,
             "-V" | "--version" => out.version = true,
@@ -85,8 +95,13 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Args, String> {
     if std::env::var_os("KVISTCODE_NO_TOOL_UPDATES").is_some_and(|v| v == "1") {
         out.no_tool_updates = true;
     }
-    if out.pair && out.unpair_all {
-        return Err("--pair and --unpair-all can't be combined; pick one".into());
+    if [out.pair, out.unpair_all, out.update]
+        .iter()
+        .filter(|x| **x)
+        .count()
+        > 1
+    {
+        return Err("--pair, --unpair-all and --update can't be combined; pick one".into());
     }
     if out.lan && out.tailscale {
         return Err("--lan and --tailscale can't be combined; pick one".into());
@@ -109,6 +124,8 @@ mod tests {
         assert_eq!(a.port, Some(5000));
         assert!(a.lan && a.pair && !a.tailscale);
         assert!(p(&["--unpair-all"]).unwrap().unpair_all);
+        assert!(p(&["--update"]).unwrap().update);
+        assert!(p(&["--no-auto-update"]).unwrap().no_auto_update);
     }
 
     #[test]
@@ -119,5 +136,6 @@ mod tests {
         assert!(p(&["--lan", "--tailscale"]).is_err());
         assert!(p(&["--nope"]).is_err());
         assert!(p(&["--pair", "--unpair-all"]).is_err());
+        assert!(p(&["--update", "--pair"]).is_err());
     }
 }

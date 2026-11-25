@@ -4,7 +4,27 @@
 
 It has the agents, queue, schedules, triggers, budgets and the phone app's review and ship tools. It does not have the desktop shell: no tray, hotkeys, notifications, voice, or preview panes.
 
-## Build
+## Install
+
+For a step-by-step guide (and a note you can give an AI agent to do it for you), see [SERVER-SETUP.md](SERVER-SETUP.md). The short version, as your normal user:
+
+```sh
+curl -fsSL https://github.com/pl0xuee/kvistcode/releases/latest/download/kvistcode-server-install.sh | sh
+```
+
+It downloads the server for your machine (x86_64 or ARM64), checks the download, installs it to `~/.local/bin`, sets up the systemd user unit below, starts it and prints a pairing link. Add `--tailscale`, `--lan` or `--local` to choose how it is reached, `--no-service` to skip start-on-boot, or `--uninstall` to remove it. Running it again updates the server and keeps your choice.
+
+To install by hand, download `kvistcode-server-<version>-linux-<arch>.tar.gz` and its `.sha256` from the [releases page](https://github.com/pl0xuee/kvistcode/releases/latest), check it with `sha256sum -c`, and copy `kvistcode-server` to `~/.local/bin`. It needs a Linux with glibc 2.35 or newer (Ubuntu 22.04, Debian 12, Fedora 36 and later).
+
+## Updates
+
+The server checks GitHub for a new version a minute after it starts and then every 6 hours. When one is out it downloads it, checks its signature (the same key as the desktop app's updater; an unsigned or wrongly signed download is refused), and installs it as soon as no agent is working. Then it stops cleanly and starts the new version in its place, keeping the same address and paired browsers.
+
+- Update now: `kvistcode-server --update`, or **Settings → Update** in a paired browser (owners only). Both wait for working agents to finish; the browser also offers "Restart now".
+- `--no-auto-update` keeps the check and the notice but installs only when you ask.
+- It can only replace a binary your user can write, so keep it in `~/.local/bin`, not `/usr/local/bin`.
+
+## Build from source
 
 The server serves the phone app from inside the binary, so build the app first.
 
@@ -31,7 +51,9 @@ It prints the address, a one-time pairing link and a QR code, then keeps running
 | `--tailscale` | Reachable from your tailnet over HTTPS through Tailscale Serve. |
 | `--pair` | Print a new pairing link for the server that is already running. |
 | `--unpair-all` | Sign out every paired browser and phone (and share link) of the running server. |
-| `--no-tool-updates` | Don't install agent tools, don't check sign-ins, don't run a login shell for PATH. For tests and sandboxes. |
+| `--update` | Update now: asks the running server to install the latest version, or replaces the binary if none is running. |
+| `--no-auto-update` | Tell you about new versions but don't install them by itself. |
+| `--no-tool-updates` | Don't install agent tools, don't check sign-ins, don't update itself, don't run a login shell for PATH. For tests and sandboxes. |
 
 With no `--lan` or `--tailscale` the server listens on `127.0.0.1` only. The flags are applied on every start; they are not remembered.
 
@@ -72,12 +94,13 @@ Agent tools that Kvistcode installs itself are kept under the data folder and up
 
 ## Run it as a service (systemd user unit)
 
-`~/.config/systemd/user/kvistcode-server.service`:
+The installer writes this for you. By hand, save it as `~/.config/systemd/user/kvistcode-server.service`:
 
 ```ini
 [Unit]
 Description=Kvistcode server
 After=network-online.target
+Wants=network-online.target
 
 [Service]
 ExecStart=%h/.local/bin/kvistcode-server --tailscale

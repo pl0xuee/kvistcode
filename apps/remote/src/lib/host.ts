@@ -67,7 +67,7 @@ const SERVER_WORDING: [RegExp, string][] = [
   [/Only pair with a computer you own\./g, "Only pair with a server you own."],
   [/(?:in|from|on) Kvistcode on your computer/g, "on the server"],
   [/Kvistcode on your computer/g, "Kvistcode on the server"],
-  [/revoke access from Settings → Phone & remote on your computer/g, "revoke access by stopping the server and deleting remote.json in its data folder (see docs/HEADLESS.md)"],
+  [/revoke access from Settings → Phone & remote on your computer/g, "sign every device out by running kvistcode-server --unpair-all on the server"],
   [/Your agents on your computer/g, "Your agents on the server"],
   [/Open it on your computer/g, "Open it on the server"],
   [/on your computer/g, "on the server"],

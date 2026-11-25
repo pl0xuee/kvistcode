@@ -1,4 +1,5 @@
 import type { HoldChoice } from "./budgetHold";
+import type { ServerUpdateStatus } from "./serverUpdate";
 import type {
   Agent,
   Attachment,
@@ -336,6 +337,11 @@ export const api = {
   /** The daily spending limit in dollars; `null` removes it. Older servers: 404. */
   setDailyBudget: (b: Backend, usd: number | null) =>
     b.request("POST", "/api/daily-budget", { usd }) as Promise<void>,
+  /** The headless server's own updates (404 from the desktop app, which updates itself). */
+  serverUpdate: (b: Backend) => b.request("GET", "/api/server-update") as Promise<ServerUpdateStatus>,
+  checkServerUpdate: (b: Backend) => b.request("POST", "/api/server-update/check") as Promise<ServerUpdateStatus>,
+  installServerUpdate: (b: Backend, now: boolean) =>
+    b.request("POST", "/api/server-update", { now }) as Promise<ServerUpdateStatus>,
   setResponseStyle: (b: Backend, style: ResponseStyle) =>
     b.request("POST", "/api/response-style", { style }) as Promise<void>,
   removeQueued: (b: Backend, agentId: string, qid: string) =>

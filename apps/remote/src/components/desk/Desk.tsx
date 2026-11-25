@@ -2,7 +2,7 @@
 // a title bar with search, the agent list on the left (Activity / Projects), and the open screen on a
 // framed sheet. Only used when kvistcode-server serves the page (see `useDesk`); phones and the
 // desktop app's own phone view never see it.
-import { memo, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { AccountDot, ProviderBadge, StatusDot, StatusText } from "@/components/Identity";
 import { AppMark, Icon, type IconName } from "@/components/Icon";
 import { ConnectionPill } from "@/components/TopBar";
@@ -18,6 +18,7 @@ import { navigate, useRoute } from "@/lib/router";
 import { accountOf, filterAgents, isUsageLimited, useAgentPending, useBackground, useTriage, USAGE_LIMIT_LABEL } from "@/lib/selectors";
 import { storage } from "@/lib/storage";
 import { groupByProject, NEED_RANK, type NeedsReason } from "@/lib/triage";
+import { refreshServerUpdate, useServerUpdate } from "@/lib/serverUpdate";
 import { useStore } from "@/lib/store";
 import type { Agent } from "@/lib/types";
 import { SettingsSheet } from "@/screens/Fleet";
@@ -46,6 +47,10 @@ export function DeskTitleBar() {
   const owner = useStore((s) => s.session?.scope === "owner");
   const [settings, setSettings] = useState(false);
   const input = useRef<HTMLInputElement>(null);
+  const update = useServerUpdate();
+  useEffect(() => {
+    if (owner) void refreshServerUpdate();
+  }, [owner]);
   const crumb =
     route.name === "inbox" ? "Needs you" : route.name === "usage" ? "Usage" : route.name === "new" ? "New agent" : route.name === "review" ? "Review" : "Agents";
   return (
@@ -93,6 +98,20 @@ export function DeskTitleBar() {
             <span className="h-1.5 w-1.5 rounded-full bg-warn" aria-hidden />
             {triage.count} {triage.count === 1 ? "needs" : "need"} you
           </button>
+        )}
+        {update?.latest && update.phase === "idle" && (
+          <button
+            type="button"
+            onClick={() => setSettings(true)}
+            className="inline-flex h-6 items-center gap-1.5 rounded-full border border-accent/40 bg-accent/10 px-2.5 text-[12px] font-medium text-accent hover:bg-accent/15"
+          >
+            Update to {update.latest.version}
+          </button>
+        )}
+        {update && update.phase !== "idle" && update.phase !== "checking" && (
+          <span role="status" className="mr-1 text-[12px] text-muted">
+            {update.phase === "waiting" ? "Update ready" : update.phase === "downloading" ? "Updating…" : "Restarting…"}
+          </span>
         )}
         <DeskIcon icon="sliders" label="This device" onClick={() => setSettings(true)} />
       </div>

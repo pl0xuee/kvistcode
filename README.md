@@ -150,6 +150,16 @@ Upgrading from Armada? Kvistcode is the same app under a new name: your agents, 
 
 On first run Kvistcode's setup installs the agent CLIs for you. If you have no Node.js it downloads a private, checksum-verified copy; no admin rights needed. Then sign in to each account from the Accounts page.
 
+### Server without a window
+
+Run your agents on an always-on Linux machine (a home server, a VPS, a Raspberry Pi) and use them from any browser. One command installs it, starts it on boot and keeps it updated:
+
+```sh
+curl -fsSL https://github.com/pl0xuee/kvistcode/releases/latest/download/kvistcode-server-install.sh | sh
+```
+
+Step by step, including a note you can hand to an AI agent to do it for you: [docs/SERVER-SETUP.md](docs/SERVER-SETUP.md). Reference: [docs/HEADLESS.md](docs/HEADLESS.md).
+
 ### Run models locally
 
 1. Install [Ollama](https://ollama.com) and start it with a larger context window than its default, so the agent has room to work:

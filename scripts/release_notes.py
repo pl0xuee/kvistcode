@@ -21,6 +21,7 @@ INSTALL = """### Install
 
 - **Windows**: `-setup.exe`
 - **Linux**: `.AppImage`, `.deb` or `.rpm`
+- **Server without a window** (Linux, x86_64 or ARM64): `curl -fsSL https://github.com/pl0xuee/kvistcode/releases/latest/download/kvistcode-server-install.sh | sh`; see [docs/SERVER-SETUP.md](https://github.com/pl0xuee/kvistcode/blob/main/docs/SERVER-SETUP.md)
 
 Already installed? Kvistcode updates itself (Settings → About → Check for updates)."""
 

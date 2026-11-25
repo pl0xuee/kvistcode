@@ -360,7 +360,7 @@ export const Composer = memo(function Composer({
               autoComplete="off"
               autoCorrect="on"
               spellCheck
-              className="block max-h-[240px] min-h-[44px] w-full resize-none bg-transparent px-4 pt-3 pb-1 text-[14px] leading-[21px] text-fg outline-none placeholder:text-steel"
+              className="block max-h-[168px] min-h-[44px] w-full resize-none bg-transparent px-4 pt-3 pb-1 text-[14px] leading-[21px] text-fg outline-none placeholder:text-steel"
             />
             <div className="flex items-center gap-1 px-2 pb-2">
               <AttachButton picker={picker} compact />

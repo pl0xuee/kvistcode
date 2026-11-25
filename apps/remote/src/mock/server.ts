@@ -35,6 +35,8 @@ export interface Scenario {
   relayoutSecs: number;
   /** `&server=1`: act as the headless `kvistcode-server` (wide layout, its wording). */
   server: boolean;
+  /** `&update=1` (with `&server=1`): a newer server version is out. */
+  update?: boolean;
 }
 
 export function scenarioFromParams(p: URLSearchParams): Scenario {
@@ -56,6 +58,7 @@ export function scenarioFromParams(p: URLSearchParams): Scenario {
     old: p.get("old") === "1",
     relayoutSecs: Math.max(0, Number(p.get("relayout") ?? 0) || 0),
     server: p.get("server") === "1",
+    update: p.get("update") === "1",
   };
 }
 
@@ -108,10 +111,16 @@ export class MockBackend implements Backend {
   private readonly createdAt = Date.now();
   private responseStyle: ResponseStyle = "concise";
   private dailyCap: number | null = 15;
+  /** The headless server's updater (`&server=1`; `&update=1` has one waiting). */
+  private upd = { current: "0.9.0", latest: null as string | null, checkedAt: null as number | null, since: 0, phase: "idle" as "idle" | "checking" | "installing" };
   private layout = projectLayout;
 
   constructor(scenario: Scenario) {
     this.s = scenario;
+    if (scenario.update) {
+      this.upd.latest = "0.9.1";
+      this.upd.checkedAt = Date.now();
+    }
     const now = Date.now();
     if (!scenario.empty) {
       for (const a of buildAgents(now)) this.agents.set(a.id, a);
@@ -271,6 +280,20 @@ export class MockBackend implements Backend {
       if (this.s.scope !== "owner") throw new ApiError(403, "This is a read-only link.");
       if (this.s.fail.has("search")) throw new ApiError(500, "search failed (simulated)");
       return this.search(new URLSearchParams(path.split("?")[1] ?? "").get("q") ?? "");
+    }
+    if (path.startsWith("/api/server-update")) {
+      if (!this.s.server) throw new ApiError(404, "Updates are handled by the desktop app.");
+      if (this.s.scope !== "owner") throw new ApiError(403, "This is a read-only link.");
+      if (path === "/api/server-update/check") {
+        this.upd.phase = "checking";
+        this.upd.since = Date.now();
+      } else if (method === "POST") {
+        if (this.s.fail.has("server-update")) throw new ApiError(409, "Kvistcode can't update itself because this user can't change /usr/local/bin.");
+        if (!this.upd.latest) throw new ApiError(409, "Already up to date.");
+        this.upd.phase = "installing";
+        this.upd.since = Date.now();
+      }
+      return this.serverUpdate();
     }
     if (path === "/api/daily-budget" && method === "POST") {
       if (this.s.scope !== "owner") throw new ApiError(403, "This is a read-only link.");
@@ -463,6 +486,40 @@ export class MockBackend implements Backend {
   }
 
   /** Matches in the timelines, grouped by agent like the core's `search_grouped` (words wrapped in \u0001 / \u0002). */
+  /** What the server's updater reports, moving along with time like the real one. */
+  private serverUpdate() {
+    const u = this.upd;
+    const t = Date.now() - u.since;
+    let phase: string = "idle";
+    if (u.phase === "checking") {
+      if (t < 800) phase = "checking";
+      else {
+        u.phase = "idle";
+        u.checkedAt = Date.now();
+      }
+    } else if (u.phase === "installing") {
+      if (t < 1500) phase = "downloading";
+      else if (t < 3000) phase = "restarting";
+      else {
+        u.phase = "idle";
+        u.current = u.latest ?? u.current;
+        u.latest = null;
+      }
+    }
+    return {
+      current: u.current,
+      latest: u.latest ? { version: u.latest, notes: "- Faster startup.\n- Fixes a crash when pairing.", url: "https://github.com/pl0xuee/kvistcode/releases/latest" } : null,
+      installed: phase === "restarting" ? u.latest : null,
+      checkedAt: u.checkedAt,
+      phase,
+      waitingOn: 0,
+      error: null,
+      canInstall: !this.s.fail.has("server-update"),
+      reason: this.s.fail.has("server-update") ? "Kvistcode can't update itself because this user can't change /usr/local/bin. Reinstall with the one-line installer, which puts it in ~/.local/bin; updates then install by themselves." : null,
+      auto: true,
+    };
+  }
+
   private search(query: string): SearchResults {
     const words = query.toLowerCase().split(/\s+/).filter(Boolean);
     const groups: SearchGroup[] = [];

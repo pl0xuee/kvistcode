@@ -4,8 +4,9 @@
 //! has to ask it. The simplest safe channel is a Unix socket in the data folder: no network
 //! port, nothing for a browser or another machine to reach, and only the folder's owner can
 //! open it (the folder is `0700`, the socket `0600`). Connect, write one command line
-//! (`pair` or `unpair-all`), read one JSON line back, done. `pair` answers
-//! `{"url": ..., "expiresAt": ...}`, `unpair-all` answers `{"ok": true}`, and either can
+//! (`pair`, `unpair-all` or `update`), read one JSON line back, done. `pair` answers
+//! `{"url": ..., "expiresAt": ...}`, `unpair-all` answers `{"ok": true}`, `update` answers
+//! `{"installed": "<version>" | null}` once it is downloaded and installed, and any can
 //! answer `{"error": ...}`.
 
 use std::path::Path;
@@ -28,6 +29,8 @@ pub enum Command {
     Pair,
     /// Sign out every paired browser and phone.
     UnpairAll,
+    /// Install the latest version and restart once idle.
+    Update,
 }
 
 #[cfg(unix)]
@@ -36,6 +39,7 @@ impl Command {
         match self {
             Command::Pair => "pair",
             Command::UnpairAll => "unpair-all",
+            Command::Update => "update",
         }
     }
 }
@@ -48,7 +52,11 @@ pub struct PairingLink {
 }
 
 #[cfg(unix)]
-pub fn serve(data_dir: &Path, remote: Arc<Remote>) -> anyhow::Result<tokio::task::JoinHandle<()>> {
+pub fn serve(
+    data_dir: &Path,
+    remote: Arc<Remote>,
+    updater: Option<Arc<crate::update::Updater>>,
+) -> anyhow::Result<tokio::task::JoinHandle<()>> {
     use std::os::unix::fs::PermissionsExt;
     use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
     use tokio::net::UnixListener;
@@ -65,6 +73,7 @@ pub fn serve(data_dir: &Path, remote: Arc<Remote>) -> anyhow::Result<tokio::task
                 break;
             };
             let remote = remote.clone();
+            let updater = updater.clone();
             tokio::spawn(async move {
                 let (read, mut write) = stream.into_split();
                 let mut line = String::new();
@@ -95,6 +104,22 @@ pub fn serve(data_dir: &Path, remote: Arc<Remote>) -> anyhow::Result<tokio::task
                         tracing::info!("every paired device was signed out (--unpair-all)");
                         serde_json::json!({ "ok": true })
                     }
+                    "update" => match updater {
+                        None => serde_json::json!({
+                            "error": "This server was started with --no-tool-updates, which turns updates off."
+                        }),
+                        Some(u) => {
+                            match tokio::task::spawn_blocking(move || u.install_blocking(false))
+                                .await
+                            {
+                                Ok(Ok(installed)) => serde_json::json!({ "installed": installed }),
+                                Ok(Err(e)) => serde_json::json!({ "error": e }),
+                                Err(_) => {
+                                    serde_json::json!({ "error": "the update stopped unexpectedly" })
+                                }
+                            }
+                        }
+                    },
                     _ => serde_json::json!({ "error": "unknown request" }),
                 };
                 let _ = write.write_all(format!("{reply}\n").as_bytes()).await;
@@ -123,7 +148,13 @@ fn ask(data_dir: &Path, command: Command) -> Result<serde_json::Value, String> {
             data_dir.display()
         )
     })?;
-    let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+    // An update downloads first.
+    let wait = if command == Command::Update {
+        15 * 60
+    } else {
+        5
+    };
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(wait)));
     let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
     stream
         .write_all(format!("{}\n", command.word()).as_bytes())
@@ -162,6 +193,16 @@ pub fn request(_: &Path) -> Result<PairingLink, String> {
 #[cfg(unix)]
 pub fn unpair_all(data_dir: &Path) -> Result<(), String> {
     ask(data_dir, Command::UnpairAll).map(|_| ())
+}
+
+/// Asks the server running on `data_dir` to update. `Err(None)`: no server is running there.
+#[cfg(unix)]
+pub fn update(data_dir: &Path) -> Result<Option<String>, Option<String>> {
+    if std::os::unix::net::UnixStream::connect(socket_path(data_dir)).is_err() {
+        return Err(None);
+    }
+    let v = ask(data_dir, Command::Update).map_err(Some)?;
+    Ok(v["installed"].as_str().map(str::to_string))
 }
 
 #[cfg(not(unix))]

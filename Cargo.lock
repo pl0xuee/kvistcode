@@ -2631,7 +2631,7 @@ dependencies = [
 
 [[package]]
 name = "kvistcode-core"
-version = "0.8.1"
+version = "0.9.0"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -2657,7 +2657,7 @@ dependencies = [
 
 [[package]]
 name = "kvistcode-desktop"
-version = "0.8.1"
+version = "0.9.0"
 dependencies = [
  "anyhow",
  "arboard",
@@ -2706,7 +2706,7 @@ dependencies = [
 
 [[package]]
 name = "kvistcode-remote"
-version = "0.8.1"
+version = "0.9.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -2736,14 +2736,19 @@ dependencies = [
 
 [[package]]
 name = "kvistcode-server"
-version = "0.8.1"
+version = "0.9.0"
 dependencies = [
  "anyhow",
+ "base64 0.23.1",
  "dirs 7.0.0",
+ "flate2",
  "kvistcode-core",
  "kvistcode-remote",
+ "minisign-verify",
+ "parking_lot",
  "qrcode",
  "serde_json",
+ "tar",
  "tokio",
  "tracing",
  "tracing-appender",
